@@ -137,6 +137,7 @@ import {
   normalizeOverlayMinWidth,
   overlayLength,
   renderSunlight,
+  renderOutdoorSunlight,
   cloudCover,
   cloudCoverEntityOf,
   sunThroughCloud,
@@ -1721,7 +1722,7 @@ export class FloorplanCard extends LitElement {
     // the night back the way a lamp's pool does.
     const moonLayer = (id: string, light: string) =>
       moon
-        ? renderSunlight(blockingWallSegments, effectiveOpenings, c.width, c.height, id, {
+        ? (active.isOutdoor ? renderOutdoorSunlight : renderSunlight)(blockingWallSegments, active.isOutdoor ? [] : effectiveOpenings, c.width, c.height, id, {
             ...openingLight,
             dir: moon.dir,
             strength: moon.strength,
@@ -1904,7 +1905,7 @@ export class FloorplanCard extends LitElement {
                  state and sun elevation through the same replay-aware state
                  source as every other light layer, so a replayed plan shows the
                  daylight of the moment being replayed rather than of now. -->
-            ${renderAmbientDaylightLayer(
+            ${active.isOutdoor ? nothing : renderAmbientDaylightLayer(
               active,
               c,
               renderHass,
@@ -1954,13 +1955,13 @@ export class FloorplanCard extends LitElement {
                  has the last word — at night there is nothing to let in. -->
             ${
               c.sunlight
-                ? renderSunlight(
+                ? (active.isOutdoor ? renderOutdoorSunlight : renderSunlight)(
                     // The same blocking set the lamps and dead space get
                     // (issue #290): generated room walls stop the sun too, and
                     // a divider never does. Railings are already out, so the
                     // sun passes over them (issue #182).
                     blockingWallSegments,
-                    effectiveOpenings,
+                    active.isOutdoor ? [] : effectiveOpenings,
                     c.width,
                     c.height,
                     `${this._wallMaskId}-sun`,

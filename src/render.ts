@@ -5947,6 +5947,42 @@ export function renderSunlight(
 }
 
 /**
+ * Render direct sunlight & building wall shadows cast on outdoor floors (isOutdoor: true).
+ */
+export function renderOutdoorSunlight(
+  walls: readonly Wall[],
+  _openings: readonly Opening[],
+  width: number,
+  height: number,
+  id: string,
+  opts: SunlightOptions,
+): SVGTemplateResult | typeof nothing {
+  const { dir, strength = 1 } = opts;
+  const direct =
+    typeof opts.direct === "number" && Number.isFinite(opts.direct)
+      ? Math.max(0, Math.min(1, opts.direct))
+      : 1;
+  if (strength <= 0) return nothing;
+
+  const reach = Math.min(width, height) * sunReachFraction(opts.reach);
+  const shadeColor = opts.shade === undefined ? SUN_SHADE_COLOR : opts.shade;
+  if (shadeColor === null) return nothing;
+
+  const shadowPolys = walls.map((w) => sunShadowPolygon(w, dir, reach));
+  if (shadowPolys.length === 0) return nothing;
+
+  const shadows = shadowPolys.map(polyPoints);
+  const opacity = SUN_SHADE * strength * direct;
+
+  return svg`
+    <g class="fp-sunlight fp-outdoor-sunlight" id=${id}>
+      ${shadows.map((p) =>
+        svg`<polygon class="fp-outdoor-shadow" points=${p} fill=${cssColorOr(shadeColor, SUN_SHADE_COLOR)} opacity=${opacity} stroke=${cssColorOr(shadeColor, SUN_SHADE_COLOR)} stroke-width=${WALL_THICKNESS} />`
+      )}
+    </g>`;
+}
+
+/**
  * `preserveAspectRatio` for a floor's background image (issue #86).
  *
  * SVG already knows how to do this, so the fit option is a straight mapping
