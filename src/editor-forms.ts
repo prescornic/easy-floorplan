@@ -2000,6 +2000,21 @@ export function areaNameForm(a: Area, haAreaNames: readonly string[] = []): Form
 export function areaForm(a: Area): FormSpec {
   return {
     fields: [
+      {
+        name: "zoneKind",
+        label: "Zone type",
+        helper: "Categorizes room vs outdoor zones (lawn, patio, pool, driveway, terrace)",
+        selector: dropdown(
+          opt("indoor", "Indoor / Room"),
+          opt("lawn", "Lawn"),
+          opt("patio", "Patio"),
+          opt("pool", "Pool"),
+          opt("terrace", "Terrace"),
+          opt("driveway", "Driveway"),
+          opt("garden", "Garden"),
+          opt("courtyard", "Courtyard")
+        ),
+      },
       { name: "showName", label: "Show name", selector: { boolean: {} } },
       // Only while the name renders — same rule the item form uses for its
       // label size.
@@ -2107,6 +2122,7 @@ export function areaForm(a: Area): FormSpec {
     ],
     data: {
       showName: a.showName ?? true,
+      zoneKind: a.zoneKind ?? "indoor",
       labelSize: a.labelSize ?? DEFAULT_AREA_LABEL_SIZE,
       opacity: a.opacity ?? DEFAULT_AREA_OPACITY,
       entity: a.entity ?? "",
@@ -2123,6 +2139,7 @@ export function areaForm(a: Area): FormSpec {
     },
     toPatch: (p) => {
       let out = p;
+      if ("zoneKind" in out && (out.zoneKind === "indoor" || !out.zoneKind)) out = { ...out, zoneKind: undefined };
       // "fill" is the default, so keep it out of the YAML.
       if ("highlight" in out && out.highlight === "fill") out = { ...out, highlight: undefined };
       // The toggle is a form-only control: it says whether `zoom` is written
@@ -2172,8 +2189,8 @@ export function wallForm(w: Wall): FormSpec {
         helper:
           (w.kind ?? "wall") === "railing"
             ? "Drawn thin; lamp light and sunlight carry on over it, and it seals off no dead space"
-            : "A railing is the low edge of a balcony, terrace or gallery",
-        selector: dropdown(opt("wall", "Wall"), opt("railing", "Railing")),
+            : "A railing is the low edge of a balcony, terrace or gallery; external/interior walls explicitly classify house boundaries",
+        selector: dropdown(opt("wall", "Wall"), opt("railing", "Railing"), opt("external", "External wall"), opt("interior", "Interior wall")),
       },
     ],
     data: {
@@ -2188,7 +2205,7 @@ export function wallForm(w: Wall): FormSpec {
     toPatch: (p) => {
       const out = { ...p };
       if ("thickness" in p && p.thickness === WALL_THICKNESS) out.thickness = undefined;
-      if ("kind" in p) out.kind = p.kind === "railing" ? "railing" : undefined;
+      if ("kind" in p) out.kind = p.kind === "wall" || !p.kind ? undefined : p.kind;
       return out;
     },
   };
@@ -2774,6 +2791,12 @@ export function projectReliefForm(c: FloorplanCardConfig): FormSpec {
 
 export function floorImageForm(f: Floor): FormSpec {
   const fields: FormField[] = [
+    {
+      name: "isOutdoor",
+      label: "Outdoor courtyard floor",
+      helper: "Flags this floor level as an outdoor courtyard area",
+      selector: { boolean: {} },
+    },
     { name: "image", label: "Bg image", helper: "/local/floorplan.png or URL", selector: { text: {} } },
   ];
   if (f.image) {
@@ -2796,11 +2819,16 @@ export function floorImageForm(f: Floor): FormSpec {
   return {
     fields,
     data: {
+      isOutdoor: f.isOutdoor ?? false,
       image: f.image ?? "",
       imageFit: f.imageFit ?? "stretch",
       imageOpacity: f.imageOpacity ?? 1,
     },
-    // "stretch" is the default, so keep it out of the YAML.
-    toPatch: (p) => ("imageFit" in p && p.imageFit === "stretch" ? { ...p, imageFit: undefined } : p),
+    toPatch: (p) => {
+      const out = { ...p };
+      if ("imageFit" in out && out.imageFit === "stretch") out.imageFit = undefined;
+      if ("isOutdoor" in out && !out.isOutdoor) out.isOutdoor = undefined;
+      return out;
+    },
   };
 }

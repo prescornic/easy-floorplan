@@ -199,7 +199,7 @@ import {
 } from "./actions";
 import { actionHandler } from "./action-handler";
 import { renderAmbientDaylightLayer } from "./ambient-daylight-integration";
-import { rectAreaSideWalls } from "./editor-geometry";
+import { rectAreaSideWalls, filterExternalIndoorWalls, filterExternalOpenings, isSameWallSegment } from "./editor-geometry";
 import { ReplayControllerImpl } from "./replay-history/replay-controller";
 import { createReplayPanelProps, renderReplayPanel } from "./replay-history/replay-panel";
 
@@ -826,6 +826,7 @@ export class FloorplanCard extends LitElement {
   private _renderIsoLayer(
     active: Floor,
     standingWalls: readonly Wall[],
+    effectiveOpenings: readonly Opening[],
     c: FloorplanCardConfig,
     rot: PlanRotation,
     frame: DisplayFrame,
@@ -844,16 +845,16 @@ export class FloorplanCard extends LitElement {
     const walls = standingWalls.map((w) => {
       const a = map(w.x1, w.y1);
       const b = map(w.x2, w.y2);
-      return { id: w.id, kind: w.kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y,
+      return { id: w.id, kind: w.kind, height: w.height, x1: a.x, y1: a.y, x2: b.x, y2: b.y,
         thickness: wallThickness(w.thickness) * (isRailing(w) ? RAILING_WEIGHT : 1) };
     });
-    const openings = active.openings.map((o) => {
+    const openings = effectiveOpenings.map((o) => {
       const p = map(o.x, o.y);
       // The rotation turns directions along with points.
       return { x: p.x, y: p.y, length: o.length, angle: o.angle + rot, type: o.type };
     });
     const solids = wallSolids(walls, openings, frame.wallHeight, false);
-    for (const o of active.openings) {
+    for (const o of effectiveOpenings) {
       solids.push(...openingSolids(o, this._travelling(o, this._openingStyle(o, renderHass)), map, frame.wallHeight));
     }
     const height = frame.wallHeight * FURNITURE_HEIGHT_FRACTION;
@@ -1477,12 +1478,29 @@ export class FloorplanCard extends LitElement {
     // Dead spaces (issue #88). Derived from the walls and openings, never
     // stored — and memoized on those two arrays, because this runs on every
     // hass update the card takes and the walls have moved on none of them.
-    // Generated room walls (the sideWalls of every rectangle area): each drawn
-    // side adds a wall — or a divider, which blocks nothing and draws as its
-    // dashed self. They join the drawn walls for rendering, but only the
-    // non-divider ones stand in the way of light and seal off space.
+    const matchingIndoorFloors = active.isOutdoor && active.haFloor
+      ? getFloors(c).filter((f) => !f.isOutdoor && f.haFloor !== undefined && String(f.haFloor) === String(active.haFloor))
+      : [];
+    const indoorWalls = matchingIndoorFloors.flatMap((f) => f.walls);
+    const indoorAreas = matchingIndoorFloors.flatMap((f) => f.areas);
+    const indoorExternalWalls = active.isOutdoor
+      ? filterExternalIndoorWalls(indoorWalls, indoorAreas)
+      : indoorWalls;
+    const indoorOpenings = matchingIndoorFloors.flatMap((f) => f.openings);
+    const indoorExternalOpenings = active.isOutdoor
+      ? filterExternalOpenings(indoorOpenings, indoorExternalWalls)
+      : indoorOpenings;
+
+    const ownWalls = active.isOutdoor
+      ? active.walls.filter((w) => !indoorExternalWalls.some((iw) => isSameWallSegment(w, iw)))
+      : active.walls;
+
+    const effectiveOpenings = active.isOutdoor
+      ? [...active.openings.filter((o) => !indoorExternalOpenings.some((io) => io.id === o.id)), ...indoorExternalOpenings]
+      : [...active.openings, ...indoorOpenings];
+
     const generatedRoomWalls = active.areas.flatMap((a) => rectAreaSideWalls(a.id, a.points, a.sideWalls ?? {}));
-    const roomWallSegments = [...active.walls, ...generatedRoomWalls];
+    const roomWallSegments = [...ownWalls, ...(active.isOutdoor ? indoorExternalWalls : indoorWalls), ...generatedRoomWalls];
     // In 3D a divider stays a line on the floor: it marks where one room ends,
     // not a wall, so it is the one segment that does not stand up.
     const standingWallSegments = standing ? roomWallSegments.filter((w) => !w.divider) : [];
@@ -1493,7 +1511,7 @@ export class FloorplanCard extends LitElement {
         : roomWallSegments
     );
     const deadSpaceRings = c.showDeadSpaces
-      ? deadSpacesCached(blockingWallSegments, active.openings)
+      ? deadSpacesCached(blockingWallSegments, effectiveOpenings)
       : [];
     // Walls as light meets them (issue #143): open doors and windows are holes,
     // exactly as the plan draws them. Computed once here rather than inside
@@ -1505,7 +1523,7 @@ export class FloorplanCard extends LitElement {
     // state change the card takes.
     const castsLight = c.sunDimming || active.items.some((it) => it.glow);
     const lightWalls = castsLight
-      ? wallsLightPassesThrough(blockingWallSegments, active.openings, (o) =>
+      ? wallsLightPassesThrough(blockingWallSegments, effectiveOpenings, (o) =>
           // Both leaves, and the travel each style actually has (issue #145):
           // asking `entity` alone left a door whose *second* panel was open
           // still blocking light outright. Glass admits it whole regardless
@@ -1567,7 +1585,7 @@ export class FloorplanCard extends LitElement {
     // the night back the way a lamp's pool does.
     const moonLayer = (id: string, light: string) =>
       moon
-        ? renderSunlight(blockingWallSegments, active.openings, c.width, c.height, id, {
+        ? renderSunlight(blockingWallSegments, effectiveOpenings, c.width, c.height, id, {
             ...openingLight,
             dir: moon.dir,
             strength: moon.strength,
@@ -1806,7 +1824,7 @@ export class FloorplanCard extends LitElement {
                     // a divider never does. Railings are already out, so the
                     // sun passes over them (issue #182).
                     blockingWallSegments,
-                    active.openings,
+                    effectiveOpenings,
                     c.width,
                     c.height,
                     `${this._wallMaskId}-sun`,
@@ -1855,7 +1873,7 @@ export class FloorplanCard extends LitElement {
             ${moon
               ? svg`<g class="fp-moonlight">${moonLayer(`${this._wallMaskId}-moon`, MOON_LIGHT_COLOR)}</g>`
               : nothing}
-            ${renderWallMask(active.openings, c.width, c.height, this._wallMaskId)}
+            ${renderWallMask(effectiveOpenings, c.width, c.height, this._wallMaskId)}
             ${(standing ? flatWallSegments : roomWallSegments).map(
                 (w) => svg`
                 <g class="fp-wall-neon"><line x1=${w.x1} y1=${w.y1} x2=${w.x2} y2=${w.y2}
@@ -1887,7 +1905,7 @@ export class FloorplanCard extends LitElement {
               // Unkeyed, Lit morphs floor A's openings into floor B's, and the
               // 0.5s leaf/panel transitions animate the leftover state — a
               // window briefly plays a door swing (issue #50).
-              standing ? [] : active.openings,
+              standing ? [] : effectiveOpenings,
               (o, i) => o.id || i,
               (o) => {
               const symbol = renderOpening(o, this._openingStyle(o, renderHass));
@@ -1938,7 +1956,7 @@ export class FloorplanCard extends LitElement {
                  stops responding (the lesson from #108). -->
             </g>
             ${standing
-              ? this._renderIsoLayer(active, standingWallSegments, c, rot, frame, rotTransform, drawFurniture, furnitureTone, renderHass,
+              ? this._renderIsoLayer(active, standingWallSegments, effectiveOpenings, c, rot, frame, rotTransform, drawFurniture, furnitureTone, renderHass,
                   // Scrubbing history jumps from state to state on purpose;
                   // easing between them would trail the scrubber.
                   !replayState.enabled)

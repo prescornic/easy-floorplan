@@ -15,7 +15,8 @@ import {
   RECT_AREA_SIDES, 
   Floor, 
   RenderHass, 
-  openingIsSkylight 
+  openingIsSkylight,
+  Opening
 } from "./types";
 
 export const RECT_AREA_EPSILON = 0.001;
@@ -798,3 +799,84 @@ export function cyclePick(
   const i = candidates.findIndex((c) => c.kind === current[0]!.kind && c.id === current[0]!.id);
   return i < 0 ? candidates[0]! : candidates[(i + 1) % candidates.length]!;
 }
+
+/**
+ * Test if two wall segments represent the same physical wall line (in either direction).
+ */
+export function isSameWallSegment(w1: Wall, w2: Wall, eps = 1): boolean {
+  const sameDir =
+    Math.hypot(w1.x1 - w2.x1, w1.y1 - w2.y1) <= eps &&
+    Math.hypot(w1.x2 - w2.x2, w1.y2 - w2.y2) <= eps;
+  const oppDir =
+    Math.hypot(w1.x1 - w2.x2, w1.y1 - w2.y2) <= eps &&
+    Math.hypot(w1.x2 - w2.x1, w1.y2 - w2.y1) <= eps;
+  return sameDir || oppDir;
+}
+
+/**
+ * Perpendicular distance from point (x,y) to wall segment (x1,y1)-(x2,y2).
+ */
+export function distToWallSegment(x: number, y: number, w: { x1: number; y1: number; x2: number; y2: number }): number {
+  const vx = w.x2 - w.x1;
+  const vy = w.y2 - w.y1;
+  const len2 = vx * vx + vy * vy;
+  if (len2 === 0) return Math.hypot(x - w.x1, y - w.y1);
+  let t = ((x - w.x1) * vx + (y - w.y1) * vy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(x - (w.x1 + t * vx), y - (w.y1 + t * vy));
+}
+
+/**
+ * Determine if an indoor wall segment is an external perimeter wall
+ * rather than an interior partition wall between two indoor room areas.
+ */
+export function isExternalWall(wall: Wall, indoorAreas: readonly Area[]): boolean {
+  if (wall.divider) return false;
+  if (wall.kind === "interior") return false;
+  if (wall.kind === "external") return true;
+  if (!indoorAreas.length) return true;
+
+  const mx = (wall.x1 + wall.x2) / 2;
+  const my = (wall.y1 + wall.y2) / 2;
+  const dx = wall.x2 - wall.x1;
+  const dy = wall.y2 - wall.y1;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return false;
+
+  const eps = 2;
+  const nx = (-dy / len) * eps;
+  const ny = (dx / len) * eps;
+
+  const p1 = { x: mx + nx, y: my + ny };
+  const p2 = { x: mx - nx, y: my - ny };
+
+  const inArea1 = indoorAreas.some((a) => pointInPolygon(a.points, p1.x, p1.y));
+  const inArea2 = indoorAreas.some((a) => pointInPolygon(a.points, p2.x, p2.y));
+
+  return !(inArea1 && inArea2);
+}
+
+/**
+ * Filter indoor walls to keep only external perimeter walls.
+ */
+export function filterExternalIndoorWalls(
+  indoorWalls: readonly Wall[],
+  indoorAreas: readonly Area[]
+): Wall[] {
+  return indoorWalls.filter((w) => isExternalWall(w, indoorAreas));
+}
+
+/**
+ * Filter indoor openings to keep only those sitting on external walls.
+ */
+export function filterExternalOpenings(
+  openings: readonly Opening[],
+  externalWalls: readonly Wall[],
+  eps = 8
+): Opening[] {
+  if (!externalWalls.length) return [...openings];
+  return openings.filter((o) =>
+    externalWalls.some((w) => distToWallSegment(o.x, o.y, w) <= eps)
+  );
+}
+

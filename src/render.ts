@@ -34,6 +34,7 @@ import type {
   FloorText,
   OverlayScale,
   ActionConfig,
+  OutdoorZoneKind,
 } from "./types";
 import {
   FURNITURE_COLOR,
@@ -6265,6 +6266,27 @@ export function renderDeadSpace(
                       fill-opacity=${DEAD_SPACE_HATCH_OPACITY} stroke="none" />`;
 }
 
+export function outdoorZoneDefaultColor(kind?: OutdoorZoneKind): string | undefined {
+  switch (kind) {
+    case "lawn":
+      return "#4CAF50";
+    case "patio":
+      return "#9E9E9E";
+    case "pool":
+      return "#2196F3";
+    case "terrace":
+      return "#A1887F";
+    case "driveway":
+      return "#607D8B";
+    case "garden":
+      return "#8BC34A";
+    case "courtyard":
+      return "#D7CCC8";
+    default:
+      return undefined;
+  }
+}
+
 /**
  * A room's translucent fill polygon, with no stroke of its own — the outline
  * is a separate pass, drawn above the walls by {@link renderAreaBorder}.
@@ -6280,6 +6302,7 @@ export function renderArea(a: Area, liveColor?: string): SVGTemplateResult {
 
   // activeOpacity is a fill concern, so it only applies when the fill is live.
   const opacity = liveFill ? a.activeOpacity ?? a.opacity : a.opacity;
+  const fallbackColor = outdoorZoneDefaultColor(a.zoneKind) ?? SKIN_ACCENT;
 
   // Stroke stays pinned off rather than omitted: this element is reused across
   // live/rest updates, and stating it keeps the fill pass unable to draw an
@@ -6287,7 +6310,7 @@ export function renderArea(a: Area, liveColor?: string): SVGTemplateResult {
   return svg`<polygon class="fp-area" data-id=${cssIdent(a.id) ?? nothing}
                        data-entity=${cssEntityId(a.entity) ?? nothing}
                        points=${pts}
-                       fill=${liveFill ? liveColor : cssColorOr(a.color, SKIN_ACCENT)}
+                       fill=${liveFill ? liveColor : cssColorOr(a.color, fallbackColor)}
                        fill-opacity=${cssNumber(opacity, DEFAULT_AREA_OPACITY)}
                        stroke="none"
                        stroke-width="0" />`;

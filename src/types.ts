@@ -81,6 +81,8 @@ export interface Wall {
    * off no dead space, since what it encloses is open to the air.
    */
   kind?: WallKind;
+  /** Custom height for 3D wall extrusion. */
+  height?: number;
   /**
    * Pinned in place in the editor (issue #191).
    *
@@ -107,7 +109,7 @@ export interface Wall {
 }
 
 /** See {@link Wall.kind}. */
-export type WallKind = "wall" | "railing";
+export type WallKind = "wall" | "railing" | "external" | "interior";
 
 /**
  * What kind of hole in the building this is.
@@ -1286,12 +1288,24 @@ export type RectAreaSideWalls = Partial<Record<RectAreaSide, RectAreaSideWallSta
  * whole level/story) the same way Home Assistant's own "area" (room) sits
  * inside a "floor" — see {@link Area.haArea}.
  */
+export type OutdoorZoneKind = "indoor" | "lawn" | "patio" | "pool" | "terrace" | "driveway" | "garden" | "courtyard";
+
+/**
+ * An area/room polygon drawn on a floor, closed by double-clicking or
+ * clicking back on the starting vertex. Distinct from a {@link Floor} (a
+ * whole level/story) the same way Home Assistant's own "area" (room) sits
+ * inside a "floor" — see {@link Area.haArea}.
+ */
 export interface Area {
   id: string;
   /** Vertices in drawing order, virtual canvas units. Implicitly closed (last -> first). */
   points: AreaPoint[];
   /** Display name. Mirrors the linked HA area's name when `haArea` is set. */
   name?: string;
+  /** Categorizes the area type (e.g. indoor room vs outdoor lawn, patio, pool, driveway). */
+  zoneKind?: OutdoorZoneKind;
+  /** Flag for outdoor courtyard areas. */
+  isOutdoor?: boolean;
   /** Show the name label on the plan, centered on the polygon. Default true. */
   showName?: boolean;
   /**
@@ -1599,6 +1613,8 @@ export const FURNITURE_COLOR = "var(--fp-skin-furniture, #9e9e9e)";
 export interface Floor {
   id: string;
   name: string;
+  /** Whether this floor represents an outdoor courtyard area. */
+  isOutdoor?: boolean;
   /**
    * Optional link to a Home Assistant floor (its registry `floor_id`).
    * Selecting one in the editor names this floor after it; the id is kept so
