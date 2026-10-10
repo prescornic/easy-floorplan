@@ -830,11 +830,14 @@ export function distToWallSegment(x: number, y: number, w: { x1: number; y1: num
  * Determine if an indoor wall segment is an external perimeter wall
  * rather than an interior partition wall between two indoor room areas.
  */
-export function isExternalWall(wall: Wall, indoorAreas: readonly Area[]): boolean {
+export function isExternalWall(
+  wall: Wall,
+  indoorAreas: readonly Area[],
+  indoorWalls: readonly Wall[] = []
+): boolean {
   if (wall.divider) return false;
   if (wall.kind === "interior") return false;
   if (wall.kind === "external") return true;
-  if (!indoorAreas.length) return true;
 
   const mx = (wall.x1 + wall.x2) / 2;
   const my = (wall.y1 + wall.y2) / 2;
@@ -850,10 +853,31 @@ export function isExternalWall(wall: Wall, indoorAreas: readonly Area[]): boolea
   const p1 = { x: mx + nx, y: my + ny };
   const p2 = { x: mx - nx, y: my - ny };
 
-  const inArea1 = indoorAreas.some((a) => pointInPolygon(a.points, p1.x, p1.y));
-  const inArea2 = indoorAreas.some((a) => pointInPolygon(a.points, p2.x, p2.y));
+  if (indoorAreas.length > 0) {
+    const inArea1 = indoorAreas.some((a) => pointInPolygon(a.points, p1.x, p1.y));
+    const inArea2 = indoorAreas.some((a) => pointInPolygon(a.points, p2.x, p2.y));
+    return !(inArea1 && inArea2);
+  }
 
-  return !(inArea1 && inArea2);
+  if (indoorWalls.length > 0) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const w of indoorWalls) {
+      if (w.x1 < minX) minX = w.x1; if (w.x2 < minX) minX = w.x2;
+      if (w.x1 > maxX) maxX = w.x1; if (w.x2 > maxX) maxX = w.x2;
+      if (w.y1 < minY) minY = w.y1; if (w.y2 < minY) minY = w.y2;
+      if (w.y1 > maxY) maxY = w.y1; if (w.y2 > maxY) maxY = w.y2;
+    }
+    const pad = 1;
+    const inBox1 = p1.x >= minX + pad && p1.x <= maxX - pad && p1.y >= minY + pad && p1.y <= maxY - pad;
+    const inBox2 = p2.x >= minX + pad && p2.x <= maxX - pad && p2.y >= minY + pad && p2.y <= maxY - pad;
+    if (inBox1 && inBox2) {
+      const touchEdge1 = Math.abs(wall.x1 - minX) < 1e-3 || Math.abs(wall.x1 - maxX) < 1e-3 || Math.abs(wall.y1 - minY) < 1e-3 || Math.abs(wall.y1 - maxY) < 1e-3;
+      const touchEdge2 = Math.abs(wall.x2 - minX) < 1e-3 || Math.abs(wall.x2 - maxX) < 1e-3 || Math.abs(wall.y2 - minY) < 1e-3 || Math.abs(wall.y2 - maxY) < 1e-3;
+      if (!touchEdge1 || !touchEdge2) return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -863,7 +887,7 @@ export function filterExternalIndoorWalls(
   indoorWalls: readonly Wall[],
   indoorAreas: readonly Area[]
 ): Wall[] {
-  return indoorWalls.filter((w) => isExternalWall(w, indoorAreas));
+  return indoorWalls.filter((w) => isExternalWall(w, indoorAreas, indoorWalls));
 }
 
 /**

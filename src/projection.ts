@@ -41,6 +41,8 @@ export type PlanProjection = "plan" | "iso";
  * cut-down wall: tall enough to read as one, short enough to see over.
  */
 export const DEFAULT_WALL_HEIGHT = 60;
+/** Multiplier for full-height external wall rendering when viewing 3D outside areas (~2.5m vs ~1m maquette). */
+export const OUTDOOR_WALL_HEIGHT_MULTIPLIER = 2.5;
 /** The tallest wall worth drawing — past this the elevation swallows the plan. */
 export const MAX_WALL_HEIGHT = 400;
 /** How tall a piece of furniture stands, as a fraction of the wall height. */
@@ -203,9 +205,21 @@ export interface IsoSolid {
   hiddenEdges?: number[];
 }
 
+/** Shift a 3D solid vertically by zOffset for multi-story floor elevation stacking. */
+export function shiftIsoSolidZ(solid: IsoSolid, zOffset: number): IsoSolid {
+  if (!zOffset) return solid;
+  return {
+    ...solid,
+    z0: solid.z0 + zOffset,
+    z1: solid.z1 + zOffset,
+    vertices: solid.vertices?.map((v) => ({ ...v, z: v.z + zOffset })),
+  };
+}
+
 export interface IsoWallInput {
   id: string;
   kind?: WallKind;
+  height?: number;
   x1: number;
   y1: number;
   x2: number;
@@ -295,7 +309,8 @@ export function wallSolids(
     const dy = w.y2 - w.y1;
     const len = Math.hypot(dx, dy);
     if (!(len > 1e-6)) continue;
-    const height = wallHeight * (w.kind === "railing" ? RAILING_HEIGHT_FRACTION : 1);
+    const baseH = w.height ?? wallHeight;
+    const height = baseH * (w.kind === "railing" ? RAILING_HEIGHT_FRACTION : 1);
     const kind = w.kind === "railing" ? "railing" : "wall";
     const d = { x: dx / len, y: dy / len };
     const n = { x: -d.y, y: d.x };
@@ -312,18 +327,19 @@ export function wallSolids(
         endEdges: end.slice(1).map((_p, i) => i + 1),
         startEdges: start.slice(1).map((_p, i) => end.length + 1 + i) };
     };
-    const pieces = (s0: number, s1: number, z1: number, kind: IsoSolidKind) => {
+    const pieces = (s0: number, s1: number, z1: number, kind: IsoSolidKind, z0 = 0) => {
       const count = Math.max(1, Math.ceil((s1 - s0) / ISO_CHUNK));
       const step = (s1 - s0) / count;
       for (let i = 0; i < count; i++) {
         const shape = box(s0 + step * i, s0 + step * (i + 1));
-        out.push({ kind, id: w.id, base: shape.base, z0: 0, z1,
+        out.push({ kind, id: w.id, base: shape.base, z0, z1,
           hiddenEdges: [...(i < count - 1 || (s1 >= len && w.end) ? shape.endEdges : []),
             ...(i > 0 || (s0 <= 0 && w.start) ? shape.startEdges : [])] });
       }
     };
     const spans = openingSpans(w, openings, d, len);
     let cursor = 0;
+    const hasHeader = w.kind !== "railing" && height > DEFAULT_WALL_HEIGHT;
     for (const s of spans) {
       // Solid wall up to this opening. The cap only at the wall's real end.
       if (s.s0 > cursor) pieces(cursor === 0 ? -half : cursor, s.s0, height, kind);
@@ -336,6 +352,10 @@ export function wallSolids(
           z0: height * SILL_FRACTION,
           z1: height * GLASS_FRACTION,
         });
+      }
+      if (hasHeader) {
+        // Render wall interval above window/door (from top of opening GLASS_FRACTION to wall top height)
+        pieces(s.s0, s.s1, height, kind, height * GLASS_FRACTION);
       }
       cursor = s.s1;
     }

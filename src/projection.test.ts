@@ -4,6 +4,7 @@ import { rotatePlanPoint, areaZoomTransform, type PlanRotation } from "./render"
 import {
   DEFAULT_WALL_HEIGHT,
   MAX_WALL_HEIGHT,
+  OUTDOOR_WALL_HEIGHT_MULTIPLIER,
   ISO_CHUNK,
   SILL_FRACTION,
   GLASS_FRACTION,
@@ -61,6 +62,10 @@ describe("normalizeWallHeight", () => {
     expect(normalizeWallHeight("80")).toBe(80);
     expect(normalizeWallHeight(-5)).toBe(0);
     expect(normalizeWallHeight(1e6)).toBe(MAX_WALL_HEIGHT);
+  });
+  it("provides 2.5x multiplier for 3D outdoor area full wall height rendering", () => {
+    expect(OUTDOOR_WALL_HEIGHT_MULTIPLIER).toBe(2.5);
+    expect(DEFAULT_WALL_HEIGHT * OUTDOOR_WALL_HEIGHT_MULTIPLIER).toBe(150);
   });
 });
 
@@ -221,6 +226,15 @@ describe("wallSolids", () => {
     // The full-height wall stops at the window.
     for (const s of solids.filter((s) => s.kind === "wall"))
       for (const p of s.base) expect(p.x <= 170 + 1e-9 || p.x >= 230 - 1e-9).toBe(true);
+  });
+
+  it("renders a wall interval above windows and doors when wall height is full height (> DEFAULT_WALL_HEIGHT)", () => {
+    const door = { x: 100, y: 0, length: 40, angle: 0, type: "door" as const };
+    const fullHeight = 150;
+    const solids = wallSolids([wall], [door], fullHeight);
+    const headers = solids.filter((s) => s.kind === "wall" && s.z0 === fullHeight * GLASS_FRACTION && s.z1 === fullHeight);
+    expect(headers.length).toBeGreaterThan(0);
+    expect(headers[0].base.some((p) => p.x >= 80 && p.x <= 120)).toBe(true);
   });
 
   it("ignores an opening that is not on the wall", () => {
