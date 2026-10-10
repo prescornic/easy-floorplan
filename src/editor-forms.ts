@@ -2029,6 +2029,51 @@ export function areaForm(a: Area): FormSpec {
             },
           ]
         : []),
+      { name: "hasRoof", label: "Draw 3D Roof", selector: { boolean: {} } },
+      ...(a.hasRoof
+        ? [
+            {
+              name: "roofType",
+              label: "Roof style",
+              selector: dropdown(
+                opt("flat", "Flat slab"),
+                opt("gable", "Gable pitch"),
+                opt("hip", "Hip roof"),
+                opt("shed", "Shed (mono-pitch)")
+              ),
+            },
+            ...((a.roofType ?? "flat") === "shed"
+              ? [
+                  {
+                    name: "roofPitchSide",
+                    label: "Pitched high side",
+                    helper: "Which side slopes up to peak height",
+                    selector: dropdown(
+                      opt("top", "Top / North (+Y)"),
+                      opt("bottom", "Bottom / South (-Y)"),
+                      opt("right", "Right / East (+X)"),
+                      opt("left", "Left / West (-X)")
+                    ),
+                  },
+                ]
+              : []),
+            {
+              name: "roofPitch",
+              label: "Roof pitch / height",
+              selector: { number: { min: 0, max: 200, step: 5, mode: "slider" as const } },
+            },
+            {
+              name: "roofElevation",
+              label: "Base elevation Z",
+              selector: { number: { min: 0, max: 400, step: 5, mode: "slider" as const } },
+            },
+            {
+              name: "roofOverhang",
+              label: "Overhang / Eaves",
+              selector: { number: { min: 0, max: 50, step: 1, mode: "slider" as const } },
+            },
+          ]
+        : []),
       {
         name: "opacity",
         label: "Fill opacity",
@@ -2124,6 +2169,12 @@ export function areaForm(a: Area): FormSpec {
       showName: a.showName ?? true,
       zoneKind: a.zoneKind ?? "indoor",
       labelSize: a.labelSize ?? DEFAULT_AREA_LABEL_SIZE,
+      hasRoof: a.hasRoof ?? false,
+      roofType: a.roofType ?? "flat",
+      roofPitchSide: a.roofPitchSide ?? "top",
+      roofPitch: a.roofPitch ?? 40,
+      roofElevation: a.roofElevation ?? 60,
+      roofOverhang: a.roofOverhang ?? 0,
       opacity: a.opacity ?? DEFAULT_AREA_OPACITY,
       entity: a.entity ?? "",
       activeOpacity: a.activeOpacity ?? a.opacity ?? DEFAULT_AREA_OPACITY,
@@ -2140,6 +2191,9 @@ export function areaForm(a: Area): FormSpec {
     toPatch: (p) => {
       let out = p;
       if ("zoneKind" in out && (out.zoneKind === "indoor" || !out.zoneKind)) out = { ...out, zoneKind: undefined };
+      if ("hasRoof" in out && !out.hasRoof) {
+        out = { ...out, hasRoof: undefined, roofType: undefined, roofPitchSide: undefined, roofPitch: undefined, roofColor: undefined, roofElevation: undefined, roofOverhang: undefined };
+      }
       // "fill" is the default, so keep it out of the YAML.
       if ("highlight" in out && out.highlight === "fill") out = { ...out, highlight: undefined };
       // The toggle is a form-only control: it says whether `zoom` is written

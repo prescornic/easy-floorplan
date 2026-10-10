@@ -69,7 +69,7 @@ interface Face { polygon: Pt[]; normal: Vertex; distance: number; toward: number
 function faces(s: IsoSolid): Face[] {
   const lifted = (ps: Pt[], z: number) => ps.map(p => ({ ...p, z }));
   const polygons: Vertex[][] = [];
-  if (s.kind === "glass" || s.kind === "panel" || s.kind === "opening-hit") {
+  if (s.kind === "glass" || s.kind === "panel" || s.kind === "opening-hit" || s.vertices) {
     const [a, b] = s.base;
     polygons.push(s.vertices ?? [{ ...a!, z: s.z0 }, { ...b!, z: s.z0 },
       { ...b!, z: s.z1 }, { ...a!, z: s.z1 }]);

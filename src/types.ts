@@ -1288,6 +1288,10 @@ export type RectAreaSideWalls = Partial<Record<RectAreaSide, RectAreaSideWallSta
  * whole level/story) the same way Home Assistant's own "area" (room) sits
  * inside a "floor" — see {@link Area.haArea}.
  */
+export type RoofType = "flat" | "gable" | "hip" | "shed";
+
+export type RoofPitchSide = "top" | "bottom" | "left" | "right";
+
 export type OutdoorZoneKind = "indoor" | "lawn" | "patio" | "pool" | "terrace" | "driveway" | "garden" | "courtyard";
 
 /**
@@ -1306,6 +1310,20 @@ export interface Area {
   zoneKind?: OutdoorZoneKind;
   /** Flag for outdoor courtyard areas. */
   isOutdoor?: boolean;
+  /** Whether a 3D roof structure is drawn over this region. */
+  hasRoof?: boolean;
+  /** Architectural style of the roof ("flat", "gable", "hip", "shed"). */
+  roofType?: RoofType;
+  /** Which side is pitched high for a shed (mono-pitch) roof ("top", "bottom", "left", "right"). */
+  roofPitchSide?: RoofPitchSide;
+  /** Height or pitch of the roof structure in canvas units. */
+  roofPitch?: number;
+  /** Color of the roof surface. */
+  roofColor?: string;
+  /** Elevation Z above floor level where the roof base sits. */
+  roofElevation?: number;
+  /** Overhang distance past room perimeter. */
+  roofOverhang?: number;
   /** Show the name label on the plan, centered on the polygon. Default true. */
   showName?: boolean;
   /**

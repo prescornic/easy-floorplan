@@ -18,6 +18,7 @@ import {
   elevationShift,
   wallSolids,
   furnitureSolid,
+  roofSolids,
   solidDepth,
   renderIsoSolids,
   type DisplayFrame,
@@ -400,5 +401,48 @@ describe("3D framing and opacity", () => {
     expect(normalizeWallOpacity(0)).toBe(0);
     expect(normalizeWallOpacity(0.45)).toBe(0.45);
     expect(normalizeWallOpacity(2)).toBe(1);
+  });
+});
+
+describe("roofSolids", () => {
+  const mapIdentity = (x: number, y: number) => ({ x, y });
+  const points = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+
+  it("ignores areas without hasRoof: true", () => {
+    const area = { id: "a1", points, hasRoof: false };
+    expect(roofSolids([area], mapIdentity, 60)).toEqual([]);
+  });
+
+  it("generates flat roof solid", () => {
+    const area = { id: "a1", points, hasRoof: true, roofType: "flat" as const, roofElevation: 60, roofPitch: 12, roofColor: "#ff0000" };
+    const solids = roofSolids([area], mapIdentity, 60);
+    expect(solids).toHaveLength(1);
+    expect(solids[0].kind).toBe("roof");
+    expect(solids[0].z0).toBe(60);
+    expect(solids[0].z1).toBe(72);
+    expect(solids[0].color).toBe("#ff0000");
+  });
+
+  it("generates hip roof solids", () => {
+    const area = { id: "a1", points, hasRoof: true, roofType: "hip" as const, roofElevation: 60, roofPitch: 40 };
+    const solids = roofSolids([area], mapIdentity, 60);
+    expect(solids).toHaveLength(4);
+    expect(solids.every((s) => s.kind === "roof" && s.z0 === 60 && s.z1 === 100)).toBe(true);
+  });
+
+  it("generates shed roof solids with pitch side options", () => {
+    for (const side of ["top", "bottom", "left", "right"] as const) {
+      const area = { id: "a1", points, hasRoof: true, roofType: "shed" as const, roofPitchSide: side, roofElevation: 60, roofPitch: 30 };
+      const solids = roofSolids([area], mapIdentity, 60);
+      expect(solids.length).toBeGreaterThanOrEqual(2);
+      expect(solids.some((s) => s.vertices !== undefined)).toBe(true);
+    }
+  });
+
+  it("generates gable roof solids", () => {
+    const area = { id: "a1", points, hasRoof: true, roofType: "gable" as const, roofElevation: 60, roofPitch: 30 };
+    const solids = roofSolids([area], mapIdentity, 60);
+    expect(solids.length).toBeGreaterThanOrEqual(2);
+    expect(solids.every((s) => s.kind === "roof")).toBe(true);
   });
 });

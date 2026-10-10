@@ -27,7 +27,7 @@
  */
 import { svg, nothing, type SVGTemplateResult } from "lit";
 import { cssNumber, cssIdent } from "./css-safe";
-import type { WallKind } from "./types";
+import type { WallKind, Area, AreaPoint } from "./types";
 import { OPENING_ON_WALL_EPS } from "./dead-space";
 import { openingIsSkylight, type OpeningType } from "./types";
 import { joinIsoWalls } from "./projection-joints";
@@ -180,7 +180,7 @@ export function elevationShift(z: number, rot: number): Pt {
 
 // ---- standing geometry ------------------------------------------------------
 
-export type IsoSolidKind = "wall" | "railing" | "sill" | "glass" | "furniture" | "panel" | "opening-hit";
+export type IsoSolidKind = "wall" | "railing" | "sill" | "glass" | "furniture" | "panel" | "opening-hit" | "roof";
 
 /** A box standing on the rotated floor — or, for glass, one pane of it. */
 export interface IsoSolid {
@@ -388,6 +388,248 @@ export function renderIsoSolids(
   return svg`<g class="fp-iso">${sortIsoSolids(solids).map(s => decorate(s, renderIsoSolid(s)))}</g>`;
 }
 
+function offsetAreaPoints(pts: readonly AreaPoint[], overhang: number): Pt[] {
+  if (overhang <= 0 || pts.length < 3) return pts.map((p) => ({ x: p.x, y: p.y }));
+  let cx = 0, cy = 0;
+  for (const p of pts) { cx += p.x / pts.length; cy += p.y / pts.length; }
+  return pts.map((p) => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: p.x + (dx / len) * overhang, y: p.y + (dy / len) * overhang };
+  });
+}
+
+/**
+ * Roof solids generated for areas that have `hasRoof: true`.
+ *
+ * Supports 4 architectural styles:
+ * - `flat`: Slab from base elevation to base + pitch
+ * - `hip`: Sloped triangular pitch faces meeting at central ridge / apex
+ * - `gable`: Dual-slope pitch along primary axis with end gables
+ * - `shed`: Mono-pitch slope from min to max plan dimension
+ */
+function createRoofFace(
+  id: string,
+  rawPts3D: Array<{ x: number; y: number; z: number }>,
+  map: (x: number, y: number) => Pt,
+  color: string,
+  z0: number,
+  z1: number
+): IsoSolid {
+  const pts3D: Array<{ x: number; y: number; z: number }> = [];
+  for (const p of rawPts3D) {
+    const last = pts3D[pts3D.length - 1];
+    if (!last || Math.hypot(p.x - last.x, p.y - last.y, p.z - last.z) > 1e-4) {
+      pts3D.push(p);
+    }
+  }
+  if (pts3D.length > 2) {
+    const first = pts3D[0]!;
+    const last = pts3D[pts3D.length - 1]!;
+    if (Math.hypot(first.x - last.x, first.y - last.y, first.z - last.z) <= 1e-4) {
+      pts3D.pop();
+    }
+  }
+  if (pts3D.length < 3) return { kind: "roof", base: [], z0, z1 };
+
+  const [a, b, c] = pts3D;
+  let shade = 0.12;
+  if (a && b && c) {
+    const u = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+    const v = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
+    const nx = u.y * v.z - u.z * v.y;
+    const ny = u.z * v.x - u.x * v.z;
+    const nz = u.x * v.y - u.y * v.x;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    const unx = nx / len, uny = ny / len, unz = nz / len;
+
+    if (unz > 0.7) {
+      shade = 0.08 + (unx > 0 ? 0.04 : 0) + (uny < 0 ? 0.08 : 0);
+    } else if (unx > 0.4) {
+      shade = SHADE_RIGHT;
+    } else if (uny < -0.4) {
+      shade = SHADE_FRONT;
+    } else {
+      shade = 0.28;
+    }
+  }
+
+  const screenPts = pts3D.map((p) => elevate(map(p.x, p.y), p.z));
+  const basePts = pts3D.map((p) => map(p.x, p.y));
+  const vert3D = pts3D.map((p) => ({ ...map(p.x, p.y), z: p.z }));
+
+  return {
+    kind: "roof",
+    id,
+    base: basePts,
+    z0,
+    z1,
+    color,
+    vertices: vert3D,
+    top: svg`<polygon class="fp-iso-face" points=${points(screenPts)} /><polygon class="fp-iso-shade" points=${points(screenPts)} opacity=${shade} />`,
+  };
+}
+
+/**
+ * Roof solids generated for areas that have `hasRoof: true`.
+ *
+ * Supports 4 architectural styles:
+ * - `flat`: Slab from base elevation to base + pitch
+ * - `hip`: Sloped triangular/trapezoidal pitch faces meeting at central ridge / apex
+ * - `gable`: Dual-slope pitch along primary axis with end gables
+ * - `shed`: Mono-pitch slope from min to max plan dimension
+ */
+export function roofSolids(
+  areas: readonly Area[],
+  map: (x: number, y: number) => Pt,
+  defaultWallHeight: number
+): IsoSolid[] {
+  const solids: IsoSolid[] = [];
+  for (const area of areas) {
+    if (!area.hasRoof || !area.points || area.points.length < 3) continue;
+
+    const roofType = area.roofType ?? "flat";
+    const z0 = area.roofElevation ?? defaultWallHeight;
+    const pitch = area.roofPitch ?? (roofType === "flat" ? 8 : Math.round(defaultWallHeight * 0.6));
+    const overhang = area.roofOverhang ?? 0;
+    const color = area.roofColor || "#8d6e63";
+
+    const planPts = offsetAreaPoints(area.points, overhang);
+    const mappedPts = planPts.map((p) => map(p.x, p.y));
+
+    if (roofType === "flat") {
+      solids.push({
+        kind: "roof",
+        id: area.id,
+        base: mappedPts,
+        z0,
+        z1: z0 + pitch,
+        color,
+      });
+    } else if (roofType === "hip") {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of planPts) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const rangeX = maxX - minX;
+      const rangeY = maxY - minY;
+      const midX = (minX + maxX) / 2;
+      const midY = (minY + maxY) / 2;
+      const zPeak = z0 + pitch;
+
+      const alongX = rangeX >= rangeY;
+      const delta = Math.min(alongX ? rangeX / 2 : rangeY / 2, (alongX ? rangeY : rangeX) / 2);
+
+      if (alongX) {
+        const r1 = { x: minX + delta, y: midY, z: zPeak };
+        const r2 = { x: maxX - delta, y: midY, z: zPeak };
+        const p1 = { x: minX, y: minY, z: z0 };
+        const p2 = { x: maxX, y: minY, z: z0 };
+        const p3 = { x: maxX, y: maxY, z: z0 };
+        const p4 = { x: minX, y: maxY, z: z0 };
+
+        solids.push(createRoofFace(area.id, [p1, p2, r2, r1], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p2, p3, r2], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p3, p4, r1, r2], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p4, p1, r1], map, color, z0, zPeak));
+      } else {
+        const r1 = { x: midX, y: minY + delta, z: zPeak };
+        const r2 = { x: midX, y: maxY - delta, z: zPeak };
+        const p1 = { x: minX, y: minY, z: z0 };
+        const p2 = { x: maxX, y: minY, z: z0 };
+        const p3 = { x: maxX, y: maxY, z: z0 };
+        const p4 = { x: minX, y: maxY, z: z0 };
+
+        solids.push(createRoofFace(area.id, [p1, p2, r1], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p2, p3, r2, r1], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p3, p4, r2], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p4, p1, r1, r2], map, color, z0, zPeak));
+      }
+    } else if (roofType === "gable") {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of planPts) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const rangeX = maxX - minX;
+      const rangeY = maxY - minY;
+      const midX = (minX + maxX) / 2;
+      const midY = (minY + maxY) / 2;
+      const zPeak = z0 + pitch;
+
+      const alongX = rangeX >= rangeY;
+      const p1 = { x: minX, y: minY, z: z0 };
+      const p2 = { x: maxX, y: minY, z: z0 };
+      const p3 = { x: maxX, y: maxY, z: z0 };
+      const p4 = { x: minX, y: maxY, z: z0 };
+
+      if (alongX) {
+        const r1 = { x: minX, y: midY, z: zPeak };
+        const r2 = { x: maxX, y: midY, z: zPeak };
+        solids.push(createRoofFace(area.id, [p1, p2, r2, r1], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p3, p4, r1, r2], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p4, p1, r1], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p2, p3, r2], map, color, z0, zPeak));
+      } else {
+        const r1 = { x: midX, y: minY, z: zPeak };
+        const r2 = { x: midX, y: maxY, z: zPeak };
+        solids.push(createRoofFace(area.id, [p4, p1, r1, r2], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p2, p3, r2, r1], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p1, p2, r1], map, color, z0, zPeak));
+        solids.push(createRoofFace(area.id, [p3, p4, r2], map, color, z0, zPeak));
+      }
+    } else if (roofType === "shed") {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of planPts) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const side = area.roofPitchSide ?? "top";
+      const zPeak = z0 + pitch;
+
+      let zSW = z0, zSE = z0, zNW = z0, zNE = z0;
+      if (side === "top") { zNW = zPeak; zNE = zPeak; }
+      else if (side === "bottom") { zSW = zPeak; zSE = zPeak; }
+      else if (side === "right") { zSE = zPeak; zNE = zPeak; }
+      else if (side === "left") { zSW = zPeak; zNW = zPeak; }
+
+      const pSW = { x: minX, y: minY, z: zSW };
+      const pSE = { x: maxX, y: minY, z: zSE };
+      const pNE = { x: maxX, y: maxY, z: zNE };
+      const pNW = { x: minX, y: maxY, z: zNW };
+
+      solids.push(createRoofFace(area.id, [pSW, pSE, pNE, pNW], map, color, z0, zPeak));
+
+      const corners = [pSW, pSE, pNE, pNW];
+      for (let i = 0; i < 4; i++) {
+        const c1 = corners[i]!;
+        const c2 = corners[(i + 1) % 4]!;
+        if (c1.z > z0 || c2.z > z0) {
+          solids.push(createRoofFace(
+            area.id,
+            [
+              { x: c1.x, y: c1.y, z: z0 },
+              { x: c2.x, y: c2.y, z: z0 },
+              { x: c2.x, y: c2.y, z: c2.z },
+              { x: c1.x, y: c1.y, z: c1.z },
+            ],
+            map, color, z0, Math.max(c1.z, c2.z)
+          ));
+        }
+      }
+    }
+  }
+  return solids;
+}
+
 /**
  * One box: the side faces that look toward the viewer, each with a shade
  * over it so the box reads as one, then the top, then whatever is drawn on
@@ -403,6 +645,36 @@ export function renderIsoSolid(s: IsoSolid): SVGTemplateResult {
                         points=${points(s.vertices
                           ? s.vertices.map((p) => elevate(p, p.z))
                           : [elevate(a, s.z0), elevate(b, s.z0), elevate(b, s.z1), elevate(a, s.z1)])} />`;
+  }
+  if (s.kind === "roof" && s.vertices) {
+    const elevated = s.vertices.map((p) => elevate(p, p.z));
+    const [a, b, c] = s.vertices;
+    if (a && b && c) {
+      const u = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+      const v = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
+      const nx = u.y * v.z - u.z * v.y;
+      const ny = u.z * v.x - u.x * v.z;
+      const nz = u.x * v.y - u.y * v.x;
+      const toward = nx + ny + nz;
+      if (toward <= 0) return svg`${nothing}`;
+
+      const len = Math.hypot(nx, ny, nz) || 1;
+      const unx = nx / len, uny = ny / len, unz = nz / len;
+      let shade = 0.12;
+      if (unz > 0.8) {
+        shade = 0.05;
+      } else if (Math.abs(unx) >= Math.abs(uny)) {
+        shade = unx > 0 ? SHADE_RIGHT : 0.22;
+      } else {
+        shade = uny > 0 ? SHADE_FRONT : 0.35;
+      }
+
+      return svg`<g class="fp-iso-solid fp-iso-roof" data-id=${id}
+                    style=${s.color ? `--fp-iso-color:${s.color}` : nothing}>
+        <polygon class="fp-iso-face" points=${points(elevated)} />
+        <polygon class="fp-iso-shade" points=${points(elevated)} opacity=${shade} />
+      </g>`;
+    }
   }
   const n = s.base.length;
   let cx = 0;

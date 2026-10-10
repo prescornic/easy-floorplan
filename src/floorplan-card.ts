@@ -167,6 +167,7 @@ import {
   elevationShift,
   wallSolids,
   furnitureSolid,
+  roofSolids,
   renderIsoSolids,
   FURNITURE_HEIGHT_FRACTION,
   type DisplayFrame,
@@ -874,6 +875,7 @@ export class FloorplanCard extends LitElement {
         )
       );
     }
+    solids.push(...roofSolids(active.areas, map, frame.wallHeight));
     const byId = new Map(active.openings.map((o) => [o.id, o]));
     const solidEdges = c.appearance === "line-art" ? solidEdgeRenderer(solids, LINE_INK) : undefined;
     return renderIsoSolids(solids, (solid, drawing) => {
@@ -2596,6 +2598,13 @@ export class FloorplanCard extends LitElement {
     }
     .fp-iso-furniture .fp-iso-top {
       fill: var(--fp-skin-bg, var(--card-background-color, #fff));
+    }
+    .fp-iso-roof .fp-iso-face, polygon.fp-iso-roof {
+      fill: var(--fp-iso-color, #8d6e63);
+      stroke: var(--fp-iso-color, #8d6e63);
+      stroke-width: 0.6;
+      stroke-linejoin: round;
+      pointer-events: none;
     }
     .fp-iso-shade {
       fill: #000;

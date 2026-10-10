@@ -6571,6 +6571,30 @@ export class FloorplanCardEditor extends LitElement {
           onLive: (color) => this._updateAreaLive(a.id, { color }),
           onCommit: (color) => this._updateArea(a.id, { color }),
         })}
+        ${this._renderGroup(
+          "3D Roof",
+          this._renderForm(
+            formSlice(aSpec, [
+              "hasRoof",
+              "roofType",
+              "roofPitchSide",
+              "roofPitch",
+              "roofElevation",
+              "roofOverhang",
+            ]),
+            aApply
+          ),
+          a.hasRoof
+            ? this._renderColorRow({
+                label: "Roof color",
+                value: a.roofColor,
+                swatch: "#8d6e63",
+                placeholder: "Default (#8d6e63)",
+                onLive: (roofColor) => this._updateAreaLive(a.id, { roofColor }),
+                onCommit: (roofColor) => this._updateArea(a.id, { roofColor }),
+              })
+            : nothing
+        )}
       `;
       return html`
         ${this._renderGroup(

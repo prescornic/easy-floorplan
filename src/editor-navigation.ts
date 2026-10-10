@@ -19,6 +19,7 @@ export const PROJECT_PAGES: readonly InspectorPage[] = [
 ];
 
 const properties: InspectorPage = { id: "properties", label: "Properties", groups: [] };
+const areaProperties: InspectorPage = { id: "properties", label: "Properties", groups: ["3D Roof"] };
 const actions: InspectorPage = { id: "actions", label: "Actions", groups: ["Behavior"] };
 
 export const SELECTION_PAGES: Record<SelKind, readonly InspectorPage[]> = {
@@ -36,7 +37,7 @@ export const SELECTION_PAGES: Record<SelKind, readonly InspectorPage[]> = {
     actions,
     { id: "visibility", label: "Visibility", groups: ["Visibility"] },
   ],
-  area: [properties, { id: "sensor", label: "Sensors", hint: "Sensors and room devices", groups: ["What it reads", "Color", "Home Assistant area"] }, actions],
+  area: [areaProperties, { id: "sensor", label: "Sensors", hint: "Sensors and room devices", groups: ["What it reads", "Color", "Home Assistant area"] }, actions],
   tracker: [
     properties,
     { id: "sensors", label: "Sensors", groups: ["Sensors"] },

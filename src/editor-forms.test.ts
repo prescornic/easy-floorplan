@@ -2193,6 +2193,7 @@ describe("every field lands in exactly one panel group", () => {
   const TRACKER_GROUPS = [["w", "h", "x", "y", "angle"], ["dotSize"]];
   const AREA_GROUPS = [
     ["zoneKind", "showName", "labelSize"],
+    ["hasRoof", "roofType", "roofPitchSide", "roofPitch", "roofElevation", "roofOverhang"],
     ["entity"],
     ["highlight", "opacity", "activeOpacity"],
     ["fitZoom", "zoom", "tap_action", "hold_action", "double_tap_action"],
@@ -2279,6 +2280,7 @@ describe("every field lands in exactly one panel group", () => {
     check(trackerForm(tr).fields, TRACKER_GROUPS, "tracker");
     const a = { id: "a", points: [{ x: 0, y: 0 }] } as Area;
     check(areaForm(a).fields, AREA_GROUPS, "area");
+    check(areaForm({ ...a, hasRoof: true, roofType: "shed" } as Area).fields, AREA_GROUPS, "area roof shed");
     check(areaForm({ ...a, entity: "light.a", haArea: "kitchen" } as Area).fields, AREA_GROUPS, "area linked");
   });
 });
