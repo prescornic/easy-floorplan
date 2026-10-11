@@ -940,10 +940,10 @@ export function roofCourseLines(vertices: Array<{ x: number; y: number; z: numbe
       if ((v1.z <= z && v2.z >= z) || (v1.z >= z && v2.z <= z)) {
         if (Math.abs(v2.z - v1.z) > 1e-4) {
           const t = (z - v1.z) / (v2.z - v1.z);
-          pts.push({
-            x: v1.x + t * (v2.x - v1.x) - z,
-            y: v1.y + t * (v2.y - v1.y) - z,
-          });
+          pts.push(elevate({
+            x: v1.x + t * (v2.x - v1.x),
+            y: v1.y + t * (v2.y - v1.y),
+          }, z));
         }
       }
     }

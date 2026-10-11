@@ -64,6 +64,9 @@ screen size.
 <img width="300" height="300" alt="odnetnin" src="https://github.com/user-attachments/assets/1d46f7a3-b894-4fcb-bdb9-a55270b8e4e4" />
 <img width="300" height="300" alt="tron" src="https://github.com/user-attachments/assets/de5b0825-3bff-4817-8a26-8f887bab8c48" />
 
+- 🏡 **Outdoor courtyard & 3D floor stacking** 🆕 — Mark an outdoor level (`isOutdoor: true`) to see a complete 3D isometric overview of your home. Upper levels automatically stack using Home Assistant floor ordering or levels, inter-floor slabs enclose levels, and subterranean basements emerge with garage ramps and underground wall culling. See [Outdoor 3D Stacking & Roofs](docs/outdoor-3d-stacking.md).
+- 🏠 **3D Roofs & Cross-gable intersections** 🆕 — Render realistic 3D roofs (`gable`, `hip`, `flat`, `shed`) over buildings, porches, carports, and gazebos with horizontal tile course lines. Overlapping perpendicular gable roofs automatically calculate ridge apexes and valleys for intersecting cross gables. Click any roof to zoom in and auto-hide it!
+- 🌲 **Outdoor zones & directional sun shadows** 🆕 — Define outdoor zones (`lawn`, `patio`, `terrace`, `pool`, `driveway`, `garden`, `courtyard`) with tailored palettes. Direct sunlight illuminates open ground while multi-story building walls cast directional shadows that lengthen at dawn/dusk and shrink at midday.
 - 📐 **Auto-scaling** — SVG over a virtual coordinate space, so the plan fits any card size.
 
 ## Installation
@@ -104,6 +107,7 @@ HACS adds the dashboard resource automatically.
 | 💡 | **[Lighting](https://github.com/nicosandller/easy-floorplan/blob/main/docs/lighting.md)** | Follow the sun, and real sunlight through the windows and skylights |
 | 🎨 | **[Appearance](https://github.com/nicosandller/easy-floorplan/blob/main/docs/appearance.md)** | Skins, overlay scale, rotation, and card-mod styling hooks |
 | ⚡ | **[Behaviour](https://github.com/nicosandller/easy-floorplan/blob/main/docs/behavior.md)** | What elements do once an entity is bound |
+| 🏡 | **[Outdoor & 3D Roof Stacking](docs/outdoor-3d-stacking.md)** | Courtyards, multi-floor 3D stacking, basements, cross-gable roofs & sunlight |
 | 🐳 | **[Local Home Assistant](https://github.com/nicosandller/easy-floorplan/blob/main/docker/README.md)** | Running the card against a real instance in Docker |
 | 🪑 | **[Furniture symbols](https://github.com/nicosandller/easy-floorplan/blob/main/furniture/README.md)** | Authoring a symbol, and contributing one |
 | 🤝 | **[Contributing](https://github.com/nicosandller/easy-floorplan/blob/main/CONTRIBUTING.md)** | Build commands, and which test suite a change needs |
@@ -368,6 +372,18 @@ keeping the name). A link unlocks two things:
 
 Overlapping areas resolve by draw order: the last one drawn wins both the fill on top and
 which room a device counts as inside.
+
+#### 3D Roofs & Outdoor Courtyard Areas
+
+Mark a floor as **Outdoor courtyard floor** (`isOutdoor: true`) under Floor Settings to render a complete 3D isometric overview of your entire house and yard:
+
+- **Automatic Multi-Level Stacking** — Indoor floors are extracted and stacked vertically according to their Home Assistant floor registry order or level. Exterior walls, windows, and doors are automatically separated from interior partition walls and extruded.
+- **Subterranean Basements** — Lower floors with negative elevation offsets relative to the ground plane (such as basements and underground garages) are supported. Underground foundation walls covered by upper floors are hidden, while walkout basements and exposed driveway ramps remain visible.
+- **3D Roofs** — Trace an area over a room or building perimeter and turn on **Draw 3D Roof** (`hasRoof: true`). Pick from **Gable pitch**, **Hip roof**, **Flat slab**, or **Shed (mono-pitch)**, with customizable pitch height, elevation, overhang, and color.
+- **Cross-Gable Intersections** — When two perpendicular gable roof areas overlap (such as a dormer or perpendicular wing meeting the main roof), the card automatically cuts valley seams, ridge apexes, and pediments.
+- **Interactive Auto-Hide on Zoom** — Clicking any 3D roof solid zooms into the room beneath it and automatically hides the roof, revealing internal furniture, lighting, and sensor badges. Unzooming restores the roof.
+- **Outdoor Zones** — Classify areas as `lawn`, `patio`, `terrace`, `pool`, `driveway`, `garden`, or `courtyard` with dedicated default color fills.
+- **Directional Building Shadows** — Courtyards and outdoor ground areas receive open sunlight, with multi-story walls and roof lines casting directional shadows that adapt live to solar elevation and azimuth.
 
 #### Live position trackers
 

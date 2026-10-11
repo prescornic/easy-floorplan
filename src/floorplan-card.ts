@@ -899,6 +899,8 @@ export class FloorplanCard extends LitElement {
     const solids: IsoSolid[] = [];
 
     if (active.isOutdoor) {
+      const unzoomedAreas = (areas: readonly Area[]) =>
+        this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
       const floors = getFloors(c);
       const baseLevel = resolveFloorLevel(active, floors, this.hass);
       const indoorFloors = floors.filter((f) => !f.isOutdoor);
@@ -1003,8 +1005,6 @@ export class FloorplanCard extends LitElement {
           const oSolids = openingSolids(o, this._travelling(o, this._openingStyle(o, renderHass)), map, outdoorWallHeight);
           solids.push(...oSolids.map((s) => shiftIsoSolidZ(s, zOffset)));
         }
-        const unzoomedAreas = (areas: readonly Area[]) =>
-          this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
         const rSolids = roofSolids(unzoomedAreas(visibleAreas), map, outdoorWallHeight);
         solids.push(...rSolids.map((s) => shiftIsoSolidZ(s, zOffset)));
       }
@@ -1025,8 +1025,6 @@ export class FloorplanCard extends LitElement {
       for (const o of ownOpenings) {
         solids.push(...openingSolids(o, this._travelling(o, this._openingStyle(o, renderHass)), map, outdoorWallHeight));
       }
-      const unzoomedAreas = (areas: readonly Area[]) =>
-        this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
       solids.push(...roofSolids(unzoomedAreas(active.areas), map, outdoorWallHeight));
       for (const a of unzoomedAreas(active.areas)) {
         if (!a.points || a.points.length < 3 || a.hasRoof) continue;

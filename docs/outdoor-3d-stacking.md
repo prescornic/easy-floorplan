@@ -113,12 +113,24 @@ All core phases have been fully implemented, verified, and integrated into `easy
 
 ## 5. Architectural Deep-Dive: Implemented Functionalities
 
-### 5.1 Multi-Level 3D Building Shell & Slabs
-When viewing an outdoor floor (`isOutdoor: true`), `_renderIsoLayer` groups indoor floors by their resolved HA floor level. For every level above the outdoor ground plane ($L > L_{\text{base}}$):
-1. **Floor Slabs**: Extrudes horizontal slab boxes ($Z \in [zOffset - 6, zOffset]$) using either the level's area polygons or boundary wall loops (`deadSpaces(lvlWalls, [])`).
-2. **Exterior Walls & Openings**: Filters out internal partition walls and draws full-height 2.5m outdoor walls with lintels spanning above door/window openings.
-3. **Roofs**: Extrudes roof geometry at the top elevation of each level.
-4. **Depth Ordering**: `sortIsoSolids` sorts solids by Z-level and isometric depth, guaranteeing lower walls render first, followed by floor slabs, upper walls, and roofs.
+### 5.1 Multi-Level 3D Building Shell, Basements & Slabs
+When viewing an outdoor floor (`isOutdoor: true`), `_renderIsoLayer` groups indoor floors by their resolved HA floor level:
+1. **Vertical Level Offsets**:
+   \[
+   z_{\text{offset}} = (L - L_{\text{base}}) \times \text{outdoorWallHeight}
+   \]
+   Where `outdoorWallHeight = baseWallHeight * 2.5`. Both positive upper floors ($L > L_{\text{base}}$) and negative subterranean floors ($L < L_{\text{base}}$, such as basements) are naturally supported.
+2. **Subterranean Headroom & Canvas Scaling**:
+   In `_frame(...)`, `lowerDepth` dynamically extends the canvas viewport downward whenever lower/basement levels exist ($L_{\text{base}} - \min(L)$), ensuring underground ramps and walkout garage walls remain within view without clipping.
+3. **Subterranean Exposure & Underground Wall Culling**:
+   Lower-level walls completely covered by upper-level room slabs are underground and automatically hidden.
+   - `splitWallsAtJunctions` cuts wall segments where they intersect upper area boundary loops.
+   - `filterLowerWallsByUpperCoverage` tests normal-offset sample points against upper coverage polygons. Walls covered on both sides are culled.
+   - For walkout basements or outdoor garage ramps, `viewerDirection(rot)` hides rear subterranean foundation walls covered from the camera's vantage point while rendering exposed front retaining walls.
+4. **Floor Slabs**:
+   Extrudes horizontal slab boxes ($Z \in [zOffset - 6, zOffset]$) using either the level's area polygons or boundary wall loops (`deadSpaces(lvlWalls, [])`). Ground slabs on the outdoor terrain are assigned $z_0 = -6, z_1 = 0$.
+5. **Exterior Walls & Openings**:
+   Filters out internal partition walls via `filterExternalIndoorWalls(...)` and draws full-height outdoor walls with lintels spanning above door/window openings (`filterExternalOpenings(...)`).
 
 ### 5.2 Dynamic Roof Auto-Hide on Area Focus
 To inspect what is inside a covered area (such as a patio or a room under a roof) without toggling configuration:
@@ -132,6 +144,29 @@ Indoor floors use window light beams cutting through shade masks. Outdoor floors
 - The courtyard/patio ground remains in open sunlight.
 - The external building envelope walls project shadow polygons (`sunShadowPolygon`) swept along the sun's travel vector (`dir = sunLightDirection(cfg, azimuth)`).
 - Shadow reach scales with sun elevation (`reach = min(w, h) * sunReachFraction * sunReachScale(elevation)`), causing shadows to realistically lengthen at dawn/dusk and contract at noon.
+
+### 5.4 Cross-Gable Roof Intersections & Tile Course Shading
+The roof geometry engine (`roofSolids`) supports `flat`, `hip`, `gable`, and `shed` styles, as well as automatic cross-gable roof intersections:
+1. **Intersection Detection**:
+   When multiple gable roof areas overlap with perpendicular ridge orientations (one aligned along X, one along Y), `roofSolids` identifies main roofs and penetrating cross gables (dormers or wings).
+2. **Valley Seam & Apex Calculation (`generateIntersectingGables`)**:
+   - Calculates ridge apex elevation $z_{\text{apex}} = \min(z_{\text{peakA}}, z_{\text{peakB}})$ and valley plan coordinate $v_{\text{apex}} = \text{midV}_A \pm (z_{\text{peakA}} - z_{\text{apex}})/\text{slope}_A$.
+   - Generates dual sloping valley faces meeting the main roof, side gable faces, and triangular infill pediments when dormer peaks are subordinate to the main roof peak.
+3. **Horizontal Tile Course Lines (`roofCourseLines`)**:
+   Sloped roof polygons generate contour lines running at constant $Z$ intervals across each face, providing the appearance of horizontal roof tile courses or standing seams.
+4. **Directional Shading**:
+   Roof face normal vectors ($\vec{n}$) determine solar shade factors (`SHADE_FRONT`, `SHADE_RIGHT`), adding realistic three-dimensional depth.
+
+### 5.5 Ground Terrain Slabs & Topological Depth Ordering
+In isometric projection, rendering overlapping 3D polygons without z-buffer artifacts requires topological sorting:
+1. **Total Order for Ground Terrain Slabs**:
+   In `sortIsoSolids`, ground slabs (`slab_...` at $z \le 0$) have a strict total ordering based on elevation and depth. This guarantees ground terrain (lawns, patios, driveways) never enters cyclic deadlocks with other slabs.
+2. **Elevation Separation**:
+   Elevated structures ($z > 0$) are explicitly ordered in front of ground slabs ($z \le 0$), preventing terrain polygons from occluding building walls or roofs.
+3. **Kahn Cycle-Breaking Fallback**:
+   If non-convex wall geometries produce a topological cycle, Kahn's algorithm cycle breaker prioritizes discharging ground slabs first, preserving the visual integrity of elevated structures.
+4. **Micro-Geometry Pruning**:
+   Wall segments and opening spans are guarded by a $2\text{px}$ minimum threshold, eliminating zero-width slivers and junction post glitches at wall corners.
 
 ---
 
@@ -159,9 +194,6 @@ floors:
       - { id: w_div, x1: 500, y1: 100, x2: 500, y2: 500 } # Interior partition wall
     areas:
       # 1. ENCOMPASSING ROOF AREA (MUST BE FIRST)
-      # Covers the entire perimeter of the building and defines the 3D roof.
-      # Because it is first, it renders beneath room labels and allows room clicks
-      # on individual sub-areas that sit on top.
       - id: whole_house_roof
         name: House Roof
         showName: false        # Hide label so it doesn't overlap room names
@@ -178,7 +210,6 @@ floors:
           - { x: 100, 'y': 500 }
 
       # 2. INDIVIDUAL ROOM AREAS (AFTER THE ENCOMPASSING AREA)
-      # These areas retain their individual colors, labels, sensors, and focus zoom.
       - id: living_room
         name: Living Room
         showName: true
@@ -238,8 +269,13 @@ floors:
           - { x: 0, 'y': 460 }
 ```
 
-### 6.2 Benefits of this Setup
-1. **Full Building 3D Exterior**: When viewing the Outside floor in 3D isometric view, the card renders the stacked building shell with its complete hip/gable roof as well as the patio shed roof.
-2. **Indoor View Integrity**: When switching to the Ground floor view, roofs are automatically excluded so rooms remain open and visible.
-3. **Interactive Inspection**: Clicking on the patio's 3D roof zooms directly into the patio, hiding its roof and revealing internal furniture, heaters, or lighting sensors.
-4. **Layering & Hit-Testing**: Placing `whole_house_roof` at index 0 ensures that individual room areas (`living_room`, `kitchen`) take precedence for tap gestures, room focus cycling, and label centering.
+### 6.2 Real-World Implementation Example: 3-Level House with Basement & Courtyard
+
+A full production configuration demonstrating a 3-level stacked home with subterranean garage/basement, cross-gable roof intersections, courtyard perimeter fence, and gazebo is available in [`tmp/3floorHouse.yaml`](file:///Users/andrei.prescornic/Personal/Casa/HomeAssystant/easy-floorplan/tmp/3floorHouse.yaml).
+
+**Highlights of this setup**:
+- **Level 2 (`2nd`)**: Primary cross-gable roofs (`HouseRoof` along X and `HouseSmallRoof` along Y) intersecting with automatic valley seams and gable pediments.
+- **Level 1 (`1st`)**: Upper living spaces stacked directly on the foundation.
+- **Level -1 (`Basement`)**: Subterranean level with garage and driveway ramp (`Rampa`); underground walls covered by Level 1 are culled while the driveway entrance ramp remains visible in 3D.
+- **Ground Floor (`Outside`)**: Marked `isOutdoor: true`, containing courtyard perimeter fence walls, driveway gate, garden lawn (`Gradina`), walkway (`Aleie`), and a gazebo (`Foisor`) with a custom shed roof.
+- **Visual Proof**: Captured in `3D_house_rendering.png`.
