@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { furnitureSolid, wallSolids, type IsoSolid, type Pt } from "./projection";
+import { furnitureSolid, wallSolids, roofSolids, roofCourseLines, type IsoSolid, type Pt } from "./projection";
 import { sortIsoSolids } from "./projection-order";
 import { joinIsoWalls } from "./projection-joints";
 import { ambientPointInArea } from "./ambient-daylight";
+import type { Area } from "./types";
 
 const wall = { id: "horizontal", x1: 0, y1: 0, x2: 100, y2: 0, thickness: 8 };
 const upright = { id: "vertical", x1: 100, y1: 0, x2: 100, y2: 100, thickness: 8 };
@@ -108,4 +109,58 @@ describe("spatial painter order (#321)", () => {
     expect(new Set(result).size).toBe(3);
     expect(sortIsoSolids(solids)).toEqual(result);
   });
+
+  it("incorporates Z elevation into fallback depth along isometric camera ray", () => {
+    const lower: IsoSolid = { kind: "roof", id: "lower", base: [{ x: 50, y: 50 }, { x: 100, y: 50 }, { x: 100, y: 100 }, { x: 50, y: 100 }], z0: 0, z1: 50 };
+    const higher: IsoSolid = { kind: "roof", id: "higher", base: [{ x: 50, y: 50 }, { x: 100, y: 50 }, { x: 100, y: 100 }, { x: 50, y: 100 }], z0: 100, z1: 150 };
+    const sorted = sortIsoSolids([higher, lower]);
+    expect(sorted).toEqual([lower, higher]);
+  });
+
+  it("generates intersecting cross-gable roof solids with valley-trimmed faces", () => {
+    const mainRoofArea: Area = {
+      id: "main_roof",
+      points: [{ x: 420, y: 220 }, { x: 1320, y: 220 }, { x: 1320, y: 1120 }, { x: 420, y: 1120 }],
+      hasRoof: true,
+      roofType: "gable",
+    };
+    const smallRoofArea: Area = {
+      id: "small_roof",
+      points: [{ x: 720, y: 680 }, { x: 1020, y: 680 }, { x: 1020, y: 1120 }, { x: 720, y: 1120 }],
+      hasRoof: true,
+      roofType: "gable",
+    };
+    const solids = roofSolids([mainRoofArea, smallRoofArea], (x, y) => ({ x, y }), 150);
+    const mainSolids = solids.filter((s) => s.id === "main_roof");
+    const smallSolids = solids.filter((s) => s.id === "small_roof");
+
+    // Main roof has North slope, 2 gable ends, and South slope split into 2 quads by the valley
+    expect(mainSolids.length).toBe(5);
+    // Small roof has West slope, East slope, and South gable end
+    expect(smallSolids.length).toBe(3);
+
+    // All solids sort deterministically without cycles
+    const sorted = sortIsoSolids(solids);
+    expect(sorted.length).toBe(solids.length);
+  });
+
+  it("generates horizontal contour lines at constant Z on sloped roof faces", () => {
+    // Sloped triangular/trapezoidal roof face from Z=300 to Z=390
+    const vertices = [
+      { x: 100, y: 0, z: 300 },
+      { x: 200, y: 0, z: 300 },
+      { x: 200, y: 50, z: 390 },
+      { x: 100, y: 50, z: 390 },
+    ];
+    const lines = roofCourseLines(vertices);
+    expect(lines.length).toBeGreaterThan(3);
+    for (const [p1, p2] of lines) {
+      // In elevated coordinates: xElev = x - z, yElev = y - z
+      // When Z is constant across the line, deltaY / deltaX corresponds to the plan edge
+      expect(Number.isFinite(p1.x) && Number.isFinite(p1.y)).toBe(true);
+      expect(Number.isFinite(p2.x) && Number.isFinite(p2.y)).toBe(true);
+      expect(p1.x).not.toEqual(p2.x);
+    }
+  });
 });
+

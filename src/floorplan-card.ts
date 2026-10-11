@@ -907,6 +907,7 @@ export class FloorplanCard extends LitElement {
           if (lvlAreas.length > 0) {
             for (const a of lvlAreas) {
               if (!a.points || a.points.length < 3) continue;
+              if (a.hasRoof) continue;
               const mappedPts = a.points.map((p) => map(p.x, p.y));
               const tone = areaColor(a, a.entity ? renderHass?.states[a.entity]?.state : undefined) || "#d6d6d6";
               solids.push(shiftIsoSolidZ({
@@ -2756,9 +2757,15 @@ export class FloorplanCard extends LitElement {
     }
     .fp-iso-roof .fp-iso-face, polygon.fp-iso-roof {
       fill: var(--fp-iso-color, #8d6e63);
-      stroke: var(--fp-iso-color, #8d6e63);
-      stroke-width: 0.6;
+      stroke: rgba(0, 0, 0, 0.28);
+      stroke-width: 1.2;
       stroke-linejoin: round;
+      pointer-events: none;
+    }
+    .fp-iso-roof-line {
+      stroke: rgba(0, 0, 0, 0.28);
+      stroke-width: 1.2;
+      stroke-linecap: round;
       pointer-events: none;
     }
     .fp-iso-roof-button {
