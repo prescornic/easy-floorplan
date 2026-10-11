@@ -201,6 +201,8 @@ export interface IsoSolid {
   z1: number;
   /** Fill for a furniture block. Walls take the skin's wall colour from the stylesheet. */
   color?: string;
+  /** Opacity for ground slabs and roof solids. */
+  opacity?: number;
   /** Drawn on the top face, already positioned in the layer's frame. */
   top?: SVGTemplateResult;
   /** Explicit raised corners for a tilted opening panel. */
@@ -989,8 +991,13 @@ export function renderIsoSolid(s: IsoSolid): SVGTemplateResult {
 
       const lines = unz > 0.05 ? roofCourseLines(s.vertices) : [];
 
+      const styleParts: string[] = [];
+      if (s.color) styleParts.push(`--fp-iso-color:${s.color}`);
+      if (s.opacity !== undefined) styleParts.push(`opacity:${s.opacity}`);
+      const style = styleParts.length > 0 ? styleParts.join(";") : nothing;
+
       return svg`<g class="fp-iso-solid fp-iso-roof" data-id=${id}
-                    style=${s.color ? `--fp-iso-color:${s.color}` : nothing}>
+                    style=${style}>
         <polygon class="fp-iso-face" points=${points(elevated)} />
         <polygon class="fp-iso-shade" points=${points(elevated)} opacity=${shade} />
         ${lines.map(([p1, p2]) => svg`<line class="fp-iso-roof-line" x1=${p1.x} y1=${p1.y} x2=${p2.x} y2=${p2.y} />`)}
@@ -1024,8 +1031,13 @@ export function renderIsoSolid(s: IsoSolid): SVGTemplateResult {
     });
   }
   const top = points(s.base.map((p) => elevate(p, s.z1)));
+  const styleParts: string[] = [];
+  if (s.color) styleParts.push(`--fp-iso-color:${s.color}`);
+  if (s.opacity !== undefined) styleParts.push(`opacity:${s.opacity}`);
+  const style = styleParts.length > 0 ? styleParts.join(";") : nothing;
+
   return svg`<g class=${`fp-iso-solid fp-iso-${s.kind}`} data-id=${id}
-                style=${s.color ? `--fp-iso-color:${s.color}` : nothing}>
+                style=${style}>
     ${faces.map(
       (f) => svg`<polygon class="fp-iso-face" points=${f.pts} /><polygon class="fp-iso-shade" points=${f.pts} opacity=${f.shade} />`
     )}

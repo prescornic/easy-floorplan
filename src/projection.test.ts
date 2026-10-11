@@ -463,4 +463,34 @@ describe("roofSolids", () => {
     expect(solids.length).toBeGreaterThanOrEqual(2);
     expect(solids.every((s) => s.kind === "roof")).toBe(true);
   });
+
+  it("renders IsoSolid with opacity in renderIsoSolids", () => {
+    const solid: IsoSolid = {
+      kind: "roof",
+      id: "slab_curte",
+      base: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+      z0: -6,
+      z1: 0,
+      color: "#f7fbfd",
+      opacity: 1,
+    };
+    const html = flatten(renderIsoSolids([solid]));
+    expect(html).toContain("opacity:1");
+    expect(html).toContain("--fp-iso-color:#f7fbfd");
+  });
+
+  it("renders IsoSolid with partial opacity", () => {
+    const solid: IsoSolid = {
+      kind: "roof",
+      id: "slab_garden",
+      base: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+      z0: -6,
+      z1: 0,
+      color: "#06f202",
+      opacity: 0.5,
+    };
+    const html = flatten(renderIsoSolids([solid]));
+    expect(html).toContain("opacity:0.5");
+    expect(html).toContain("--fp-iso-color:#06f202");
+  });
 });

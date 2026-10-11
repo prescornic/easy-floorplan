@@ -14,6 +14,7 @@ import type {
   OverlayScale,
   RenderHass,
   Wall,
+  AreaPoint,
 } from "./types";
 import { buildRenderHass } from "./replay-history/render-state-service";
 import "./replay-history/history-timeline";
@@ -112,6 +113,8 @@ import {
   openingClearFraction,
   glowClearSpan,
   areaLabelPoint,
+  pointInPolygon,
+  polygonCentroid,
   trackerSensorReading,
   entityIsActive,
   itemBadgeLabel,
@@ -224,7 +227,14 @@ import {
 } from "./actions";
 import { actionHandler } from "./action-handler";
 import { renderAmbientDaylightLayer } from "./ambient-daylight-integration";
-import { rectAreaSideWalls, filterExternalIndoorWalls, filterExternalOpenings, isSameWallSegment } from "./editor-geometry";
+import {
+  rectAreaSideWalls,
+  filterExternalIndoorWalls,
+  filterExternalOpenings,
+  isSameWallSegment,
+  filterLowerWallsByUpperCoverage,
+  isAreaCoveredByUpper,
+} from "./editor-geometry";
 import { ReplayControllerImpl } from "./replay-history/replay-controller";
 import { createReplayPanelProps, renderReplayPanel } from "./replay-history/replay-panel";
 
@@ -903,17 +913,42 @@ export class FloorplanCard extends LitElement {
         levelMap.set(lvl, list);
       }
 
+      const upperCoveragePolygons: (readonly AreaPoint[])[] = [];
+      for (const f of floors) {
+        if (resolveFloorLevel(f, floors, this.hass) >= baseLevel) {
+          for (const a of f.areas) {
+            if (a.points && a.points.length >= 3) {
+              upperCoveragePolygons.push(a.points);
+            }
+          }
+          if (!f.isOutdoor && f.walls.length >= 3 && f.areas.length === 0) {
+            for (const ring of deadSpaces(f.walls, [])) {
+              if (ring.length >= 3) {
+                upperCoveragePolygons.push(ring);
+              }
+            }
+          }
+        }
+      }
+
       for (const [lvl, lvlFloors] of Array.from(levelMap.entries()).sort((a, b) => a[0] - b[0])) {
+        const isLower = lvl < baseLevel;
         const zOffset = (lvl - baseLevel) * outdoorWallHeight;
         const lvlWalls = lvlFloors.flatMap((f) => f.walls);
         const lvlAreas = lvlFloors.flatMap((f) => f.areas);
         const lvlOpenings = lvlFloors.flatMap((f) => f.openings);
-        const extWalls = filterExternalIndoorWalls(lvlWalls, lvlAreas);
+
+        const extWalls = isLower
+          ? filterLowerWallsByUpperCoverage(lvlWalls, upperCoveragePolygons, 8, rot)
+          : filterExternalIndoorWalls(lvlWalls, lvlAreas);
         const extOpenings = filterExternalOpenings(lvlOpenings, extWalls);
+        const visibleAreas = isLower
+          ? lvlAreas.filter((a) => !isAreaCoveredByUpper(a, upperCoveragePolygons))
+          : lvlAreas;
 
         if (zOffset !== 0 || hasLowerLevels) {
-          if (lvlAreas.length > 0) {
-            for (const a of lvlAreas) {
+          if (visibleAreas.length > 0) {
+            for (const a of visibleAreas) {
               if (!a.points || a.points.length < 3) continue;
               if (a.hasRoof) continue;
               const mappedPts = a.points.map((p) => map(p.x, p.y));
@@ -926,6 +961,7 @@ export class FloorplanCard extends LitElement {
                 z0: -6,
                 z1: 0,
                 color: tone,
+                opacity: a.opacity !== undefined ? cssNumber(a.opacity, 1) : 1,
               }, zOffset));
             }
           } else if (lvlWalls.length >= 3) {
@@ -933,6 +969,10 @@ export class FloorplanCard extends LitElement {
             for (let i = 0; i < rings.length; i++) {
               const ring = rings[i]!;
               if (ring.length < 3) continue;
+              const centroid = polygonCentroid(ring);
+              if (isLower && centroid && upperCoveragePolygons.some((poly) => pointInPolygon(poly, centroid.x, centroid.y))) {
+                continue;
+              }
               const mappedPts = ring.map((p) => map(p.x, p.y));
               solids.push(shiftIsoSolidZ({
                 kind: "roof",
@@ -965,7 +1005,7 @@ export class FloorplanCard extends LitElement {
         }
         const unzoomedAreas = (areas: readonly Area[]) =>
           this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
-        const rSolids = roofSolids(unzoomedAreas(lvlAreas), map, outdoorWallHeight);
+        const rSolids = roofSolids(unzoomedAreas(visibleAreas), map, outdoorWallHeight);
         solids.push(...rSolids.map((s) => shiftIsoSolidZ(s, zOffset)));
       }
 
@@ -988,6 +1028,22 @@ export class FloorplanCard extends LitElement {
       const unzoomedAreas = (areas: readonly Area[]) =>
         this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
       solids.push(...roofSolids(unzoomedAreas(active.areas), map, outdoorWallHeight));
+      for (const a of unzoomedAreas(active.areas)) {
+        if (!a.points || a.points.length < 3 || a.hasRoof) continue;
+        const mappedPts = a.points.map((p) => map(p.x, p.y));
+        const tone = areaColor(a, a.entity ? renderHass?.states[a.entity]?.state : undefined) ||
+          cssColorOr(a.color, outdoorZoneDefaultColor(a.zoneKind) ?? "#d6d6d6");
+        const opacity = a.opacity !== undefined ? cssNumber(a.opacity, 1) : 1;
+        solids.push({
+          kind: "roof",
+          id: `slab_${a.id}`,
+          base: mappedPts,
+          z0: -6,
+          z1: 0,
+          color: tone,
+          opacity,
+        });
+      }
 
     } else {
       const walls = standingWalls.map((w) => {
@@ -2774,6 +2830,9 @@ export class FloorplanCard extends LitElement {
       stroke-width: 1.2;
       stroke-linejoin: round;
       pointer-events: none;
+    }
+    .fp-iso-roof[data-id^="slab_"] .fp-iso-face {
+      stroke: none;
     }
     .fp-iso-roof-line {
       stroke: rgba(0, 0, 0, 0.28);
