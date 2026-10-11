@@ -953,7 +953,9 @@ export class FloorplanCard extends LitElement {
           const oSolids = openingSolids(o, this._travelling(o, this._openingStyle(o, renderHass)), map, outdoorWallHeight);
           solids.push(...oSolids.map((s) => shiftIsoSolidZ(s, zOffset)));
         }
-        const rSolids = roofSolids(lvlAreas, map, outdoorWallHeight);
+        const unzoomedAreas = (areas: readonly Area[]) =>
+          this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
+        const rSolids = roofSolids(unzoomedAreas(lvlAreas), map, outdoorWallHeight);
         solids.push(...rSolids.map((s) => shiftIsoSolidZ(s, zOffset)));
       }
 
@@ -973,7 +975,9 @@ export class FloorplanCard extends LitElement {
       for (const o of ownOpenings) {
         solids.push(...openingSolids(o, this._travelling(o, this._openingStyle(o, renderHass)), map, outdoorWallHeight));
       }
-      solids.push(...roofSolids(active.areas, map, outdoorWallHeight));
+      const unzoomedAreas = (areas: readonly Area[]) =>
+        this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
+      solids.push(...roofSolids(unzoomedAreas(active.areas), map, outdoorWallHeight));
 
     } else {
       const walls = standingWalls.map((w) => {
@@ -1008,9 +1012,25 @@ export class FloorplanCard extends LitElement {
       );
     }
     const byId = new Map(active.openings.map((o) => [o.id, o]));
+    const allAreas = getFloors(c).flatMap((f) => f.areas);
+    const areaById = new Map(allAreas.map((a) => [a.id, a]));
     const solidEdges = c.appearance === "line-art" ? solidEdgeRenderer(solids, LINE_INK) : undefined;
     return renderIsoSolids(solids, (solid, drawing) => {
       if (solidEdges) drawing = svg`${drawing}${solidEdges(solid)}`;
+      if (solid.kind === "roof" && solid.id && !solid.id.startsWith("slab_")) {
+        const a = areaById.get(solid.id);
+        if (a) {
+          const acts = areaHasActions(a);
+          return svg`<g class="fp-iso-roof-button"
+              role=${acts ? "button" : nothing} tabindex=${acts ? "0" : nothing}
+              aria-label=${a.name || a.id}
+              @action=${(ev: CustomEvent<{ action: "tap" | "hold" | "double_tap" }>) => this._onAreaAction(ev, a)}
+              .actionHandler=${actionHandler({
+                hasHold: hasAction(areaActionForGesture(a, "hold")?.config),
+                hasDoubleClick: hasAction(areaActionForGesture(a, "double_tap")?.config),
+              })}>${drawing}</g>`;
+        }
+      }
       if (solid.kind !== "panel" && solid.kind !== "opening-hit") return drawing;
       const o = byId.get(solid.id!);
       if (!o || !openingIsPressable(o, this._featuresOf)) return drawing;
@@ -2740,6 +2760,16 @@ export class FloorplanCard extends LitElement {
       stroke-width: 0.6;
       stroke-linejoin: round;
       pointer-events: none;
+    }
+    .fp-iso-roof-button {
+      cursor: pointer;
+    }
+    .fp-iso-roof-button .fp-iso-face,
+    .fp-iso-roof-button polygon.fp-iso-roof {
+      pointer-events: auto;
+    }
+    .fp-iso-roof-button:focus-visible {
+      outline: 2px solid var(--primary-color, #03a9f4);
     }
     .fp-iso-shade {
       fill: #000;
