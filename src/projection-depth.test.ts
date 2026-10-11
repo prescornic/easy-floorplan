@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { furnitureSolid, wallSolids, roofSolids, roofCourseLines, type IsoSolid, type Pt } from "./projection";
+import { furnitureSolid, wallSolids, roofSolids, roofCourseLines, shiftIsoSolidZ, type IsoSolid, type Pt } from "./projection";
 import { sortIsoSolids } from "./projection-order";
 import { joinIsoWalls } from "./projection-joints";
 import { ambientPointInArea } from "./ambient-daylight";
@@ -162,5 +162,47 @@ describe("spatial painter order (#321)", () => {
       expect(p1.x).not.toEqual(p2.x);
     }
   });
+
+  it("shifts lower level walls and slabs to negative Z elevations", () => {
+    const wall1 = { id: "basement_wall", x1: 0, y1: 0, x2: 100, y2: 0, thickness: 8 };
+    const outdoorWallHeight = 150;
+    const zOffset = -outdoorWallHeight; // level 0 vs baseLevel 1
+
+    const wSolids = wallSolids([wall1], [], outdoorWallHeight);
+    const shiftedWalls = wSolids.map((s) => shiftIsoSolidZ(s, zOffset));
+
+    for (const s of shiftedWalls) {
+      expect(s.z0).toBe(-outdoorWallHeight);
+      expect(s.z1).toBe(0);
+    }
+
+    const slab: IsoSolid = {
+      kind: "roof",
+      id: "slab_basement_garage",
+      base: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+      z0: -6,
+      z1: 0,
+      color: "#888888",
+    };
+    const shiftedSlab = shiftIsoSolidZ(slab, zOffset);
+    expect(shiftedSlab.z0).toBe(-outdoorWallHeight - 6);
+    expect(shiftedSlab.z1).toBe(-outdoorWallHeight);
+
+    // Ground level slab at z=0 sits above the basement slab
+    const groundSlab: IsoSolid = {
+      kind: "roof",
+      id: "slab_first_floor",
+      base: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }],
+      z0: -6,
+      z1: 0,
+      color: "#cccccc",
+    };
+
+    const sorted = sortIsoSolids([groundSlab, shiftedSlab]);
+    // Slices sort back-to-front: lower basement slab is painted before/under ground slab
+    expect(sorted[0]!.id).toBe("slab_basement_garage");
+    expect(sorted[1]!.id).toBe("slab_first_floor");
+  });
 });
+
 

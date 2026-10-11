@@ -173,6 +173,7 @@ import {
   IDENTITY_ZOOM,
   wallThickness,
   RAILING_WEIGHT,
+  outdoorZoneDefaultColor,
   type PlanRotation,
   type OpeningStyle,
 } from "./render";
@@ -736,20 +737,25 @@ export class FloorplanCard extends LitElement {
     const d = rotatedCanvasSize(cssNumber(c.width, DEFAULT_WIDTH), cssNumber(c.height, DEFAULT_HEIGHT), rot);
     const baseWallHeight = normalizeWallHeight(c.wallHeight);
     let wallHeight = baseWallHeight;
+    let lowerDepth = 0;
     if (active?.isOutdoor) {
       const floors = getFloors(c);
       const indoorFloors = floors.filter((f) => !f.isOutdoor);
       const baseLevel = resolveFloorLevel(active, floors, this.hass);
       const levels = indoorFloors.map((f) => resolveFloorLevel(f, floors, this.hass));
       const maxLevel = levels.length ? Math.max(...levels) : baseLevel;
-      const numLevels = Math.max(1, maxLevel - baseLevel + 1);
-      wallHeight = baseWallHeight * OUTDOOR_WALL_HEIGHT_MULTIPLIER * numLevels;
+      const minLevel = levels.length ? Math.min(...levels) : baseLevel;
+      const upperLevels = Math.max(0, maxLevel - baseLevel);
+      const lowerLevels = Math.max(0, baseLevel - minLevel);
+      wallHeight = baseWallHeight * OUTDOOR_WALL_HEIGHT_MULTIPLIER * (upperLevels + 1);
+      lowerDepth = baseWallHeight * OUTDOOR_WALL_HEIGHT_MULTIPLIER * lowerLevels;
     }
     return {
       w: d.w,
       h: d.h,
       projection: normalizeProjection(c.view ?? c.projection),
       wallHeight,
+      lowerDepth,
       padding: 2 + Math.max(WALL_THICKNESS, ...getFloors(c).flatMap((f) => f.walls.map((w) => wallThickness(w.thickness)))),
     };
   }
@@ -886,10 +892,12 @@ export class FloorplanCard extends LitElement {
       const floors = getFloors(c);
       const baseLevel = resolveFloorLevel(active, floors, this.hass);
       const indoorFloors = floors.filter((f) => !f.isOutdoor);
+      const hasLowerLevels = indoorFloors.some(
+        (f) => resolveFloorLevel(f, floors, this.hass) < baseLevel
+      );
       const levelMap = new Map<number, Floor[]>();
       for (const f of indoorFloors) {
         const lvl = resolveFloorLevel(f, floors, this.hass);
-        if (lvl < baseLevel) continue;
         const list = levelMap.get(lvl) ?? [];
         list.push(f);
         levelMap.set(lvl, list);
@@ -903,13 +911,14 @@ export class FloorplanCard extends LitElement {
         const extWalls = filterExternalIndoorWalls(lvlWalls, lvlAreas);
         const extOpenings = filterExternalOpenings(lvlOpenings, extWalls);
 
-        if (zOffset > 0) {
+        if (zOffset !== 0 || hasLowerLevels) {
           if (lvlAreas.length > 0) {
             for (const a of lvlAreas) {
               if (!a.points || a.points.length < 3) continue;
               if (a.hasRoof) continue;
               const mappedPts = a.points.map((p) => map(p.x, p.y));
-              const tone = areaColor(a, a.entity ? renderHass?.states[a.entity]?.state : undefined) || "#d6d6d6";
+              const tone = areaColor(a, a.entity ? renderHass?.states[a.entity]?.state : undefined) ||
+                cssColorOr(a.color, outdoorZoneDefaultColor(a.zoneKind) ?? "#d6d6d6");
               solids.push(shiftIsoSolidZ({
                 kind: "roof",
                 id: `slab_${a.id}`,
@@ -967,7 +976,7 @@ export class FloorplanCard extends LitElement {
         return { id: w.id, kind: w.kind, height: w.height, x1: a.x, y1: a.y, x2: b.x, y2: b.y,
           thickness: wallThickness(w.thickness) * (isRailing(w) ? RAILING_WEIGHT : 1) };
       });
-      const ownOpenings = active.openings;
+      const ownOpenings = filterExternalOpenings(active.openings, ownWalls);
       const mappedOwnOpenings = ownOpenings.map((o) => {
         const p = map(o.x, o.y);
         return { x: p.x, y: p.y, length: o.length, angle: o.angle + rot, type: o.type };
@@ -1012,7 +1021,11 @@ export class FloorplanCard extends LitElement {
         )
       );
     }
-    const byId = new Map(active.openings.map((o) => [o.id, o]));
+    const allOpenings = [
+      ...active.openings,
+      ...getFloors(c).filter((f) => !f.isOutdoor).flatMap((f) => f.openings),
+    ];
+    const byId = new Map(allOpenings.map((o) => [o.id, o]));
     const allAreas = getFloors(c).flatMap((f) => f.areas);
     const areaById = new Map(allAreas.map((a) => [a.id, a]));
     const solidEdges = c.appearance === "line-art" ? solidEdgeRenderer(solids, LINE_INK) : undefined;

@@ -101,6 +101,8 @@ export interface DisplayFrame {
   h: number;
   projection: PlanProjection;
   wallHeight: number;
+  /** Extra vertical depth for lower levels beneath the base elevation. */
+  lowerDepth?: number;
   /** Screen-space margin for wall caps at the canvas boundary. */
   padding?: number;
 }
@@ -112,7 +114,10 @@ export interface DisplayFrame {
  */
 export function projectedCanvasSize(f: DisplayFrame): { w: number; h: number } {
   if (f.projection !== "iso") return { w: f.w, h: f.h };
-  return { w: (f.w + f.h) * ISO_COS + 2 * (f.padding ?? 0), h: (f.w + f.h) * ISO_SIN + f.wallHeight + 2 * (f.padding ?? 0) };
+  return {
+    w: (f.w + f.h) * ISO_COS + 2 * (f.padding ?? 0),
+    h: (f.w + f.h) * ISO_SIN + f.wallHeight + (f.lowerDepth ?? 0) + 2 * (f.padding ?? 0),
+  };
 }
 
 /**

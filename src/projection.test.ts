@@ -78,6 +78,10 @@ describe("projectedCanvasSize", () => {
     expect(d.w).toBeCloseTo(1600 * COS, 6);
     expect(d.h).toBeCloseTo(800 + 60, 6);
   });
+  it("includes lowerDepth for lower levels beneath the base elevation", () => {
+    const d = projectedCanvasSize({ ...iso(), lowerDepth: 90 });
+    expect(d.h).toBeCloseTo(800 + 60 + 90, 6);
+  });
 });
 
 describe("projectPlanPoint", () => {
