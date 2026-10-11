@@ -1028,7 +1028,7 @@ export function filterLowerWallsByUpperCoverage(
     const dx = w.x2 - w.x1;
     const dy = w.y2 - w.y1;
     const len = Math.hypot(dx, dy);
-    if (len <= 1e-6) return false;
+    if (len <= 2) return false;
     const mx = (w.x1 + w.x2) / 2;
     const my = (w.y1 + w.y2) / 2;
     const nx = -dy / len;

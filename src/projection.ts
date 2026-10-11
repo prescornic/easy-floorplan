@@ -277,8 +277,12 @@ function openingSpans(
     // in this wall" means one thing across the card.
     const off = Math.abs(rx * -d.y + ry * d.x);
     if (off > OPENING_ON_WALL_EPS) continue;
-    const s0 = Math.max(0, t - o.length / 2);
-    const s1 = Math.min(len, t + o.length / 2);
+    const rawS0 = t - o.length / 2;
+    const rawS1 = t + o.length / 2;
+    let s0 = Math.max(0, rawS0);
+    let s1 = Math.min(len, rawS1);
+    if (s0 <= 2) s0 = 0;
+    if (len - s1 <= 2) s1 = len;
     if (s1 - s0 <= 0) continue;
     spans.push({ s0, s1, type: o.type === "window" ? "window" : "door" });
   }
@@ -352,7 +356,7 @@ export function wallSolids(
     const hasHeader = w.kind !== "railing" && height > DEFAULT_WALL_HEIGHT;
     for (const s of spans) {
       // Solid wall up to this opening. The cap only at the wall's real end.
-      if (s.s0 > cursor) pieces(cursor === 0 ? -half : cursor, s.s0, height, kind);
+      if (s.s0 - cursor > 2) pieces(cursor === 0 ? -half : cursor, s.s0, height, kind);
       if (s.type === "window") {
         pieces(s.s0, s.s1, height * SILL_FRACTION, "sill");
         if (includeGlass) out.push({
@@ -369,7 +373,7 @@ export function wallSolids(
       }
       cursor = s.s1;
     }
-    if (cursor < len) pieces(cursor === 0 ? -half : cursor, len + half, height, kind);
+    if (len - cursor > 2) pieces(cursor === 0 ? -half : cursor, len + half, height, kind);
   }
   return out;
 }

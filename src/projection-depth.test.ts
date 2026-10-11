@@ -203,6 +203,44 @@ describe("spatial painter order (#321)", () => {
     expect(sorted[0]!.id).toBe("slab_basement_garage");
     expect(sorted[1]!.id).toBe("slab_first_floor");
   });
+
+  it("orders ground slab underneath elevated roof even when slab depth exceeds roof depth", () => {
+    // Slabs spanning outdoors can have a centroid far to the south/east, giving them a larger depth
+    // value than a northern elevated roof. Ground slabs must always sort before elevated roofs.
+    const groundSlab: IsoSolid = {
+      kind: "roof",
+      id: "slab_curte",
+      base: [
+        { x: 200, y: 200 },
+        { x: 1500, y: 200 },
+        { x: 1500, y: 1500 },
+        { x: 200, y: 1500 },
+      ],
+      z0: -6,
+      z1: 0,
+      color: "#44aa44",
+    };
+
+    const elevatedRoof: IsoSolid = {
+      kind: "roof",
+      id: "roof_second_floor",
+      base: [
+        { x: 500, y: 500 },
+        { x: 700, y: 500 },
+        { x: 700, y: 700 },
+        { x: 500, y: 700 },
+      ],
+      z0: 300,
+      z1: 390,
+      color: "#8844aa",
+    };
+
+    // Even if ground slab is after elevated roof in input, it must sort before it
+    const sorted = sortIsoSolids([elevatedRoof, groundSlab]);
+    expect(sorted[0]!.id).toBe("slab_curte");
+    expect(sorted[1]!.id).toBe("roof_second_floor");
+  });
 });
+
 
 

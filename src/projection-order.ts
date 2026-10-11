@@ -174,21 +174,47 @@ export function sortIsoSolids(solids: readonly IsoSolid[]): IsoSolid[] {
     const a = nodes[i]!, b = nodes[j]!;
     if (a.xmax <= b.xmin + EPS || b.xmax <= a.xmin + EPS ||
       a.ymax <= b.ymin + EPS || b.ymax <= a.ymin + EPS || !overlaps(a.shadow, b.shadow)) continue;
+
+    const aIsSlab = a.s.id?.startsWith("slab_");
+    const bIsSlab = b.s.id?.startsWith("slab_");
+
     let direction = 0;
-    for (const axis of [...a.axes, ...b.axes]) {
-      const toward = axis.x + axis.y + axis.z;
-      if (Math.abs(toward) <= EPS) continue;
-      const [amin, amax] = interval(a.vs, axis), [bmin, bmax] = interval(b.vs, axis);
-      // Coincident panes have no order along their common zero-width axis.
-      if (amax - amin <= EPS && bmax - bmin <= EPS && Math.abs(amin - bmin) <= EPS) continue;
-      direction = amax <= bmin + EPS ? toward : bmax <= amin + EPS ? -toward : 0;
-      if (!direction) continue;
-      break;
+
+    if (aIsSlab && bIsSlab) {
+      // Both are ground slabs: strict total order by elevation and depth prevents any cycles among ground slabs.
+      if (Math.abs(a.s.z1 - b.s.z1) > EPS) {
+        direction = a.s.z1 < b.s.z1 ? 1 : -1;
+      } else {
+        direction = a.depth < b.depth - EPS ? 1 : a.depth > b.depth + EPS ? -1 : a.i < b.i ? 1 : -1;
+      }
+    } else if (aIsSlab !== bIsSlab) {
+      // Ground slabs are beneath elevated structures (walls, roofs, furniture) and must never occlude them.
+      const [slab, other] = aIsSlab ? [a, b] : [b, a];
+      if (other.s.z1 > slab.s.z1 + EPS && other.s.z0 >= slab.s.z0 - EPS) {
+        direction = aIsSlab ? 1 : -1;
+      }
     }
-    direction ||= faceOrder(a.faces, b.faces);
-    if (!direction && a.s.kind === "roof" && b.s.kind === "roof" && a.s.id !== b.s.id) {
-      direction = a.depth < b.depth - EPS ? 1 : a.depth > b.depth + EPS ? -1 : a.i < b.i ? 1 : -1;
+
+    if (!direction) {
+      for (const axis of [...a.axes, ...b.axes]) {
+        const toward = axis.x + axis.y + axis.z;
+        if (Math.abs(toward) <= EPS) continue;
+        const [amin, amax] = interval(a.vs, axis), [bmin, bmax] = interval(b.vs, axis);
+        // Coincident panes have no order along their common zero-width axis.
+        if (amax - amin <= EPS && bmax - bmin <= EPS && Math.abs(amin - bmin) <= EPS) continue;
+        direction = amax <= bmin + EPS ? toward : bmax <= amin + EPS ? -toward : 0;
+        if (!direction) continue;
+        break;
+      }
+      direction ||= faceOrder(a.faces, b.faces);
     }
+
+    if (!direction) {
+      if (a.s.kind === "roof" && b.s.kind === "roof" && a.s.id !== b.s.id && !aIsSlab && !bIsSlab) {
+        direction = a.depth < b.depth - EPS ? 1 : a.depth > b.depth + EPS ? -1 : a.i < b.i ? 1 : -1;
+      }
+    }
+
     if (direction) {
       const [far, near] = direction > 0 ? [a, b] : [b, a];
       far.next.add(near.i);
@@ -198,8 +224,13 @@ export function sortIsoSolids(solids: readonly IsoSolid[]): IsoSolid[] {
   const waiting = [...nodes].sort((a, b) => a.depth - b.depth || a.i - b.i);
   const ordered: IsoSolid[] = [];
   while (waiting.length) {
-    const ready = waiting.findIndex(n => n.incoming === 0);
-    const [node] = waiting.splice(ready < 0 ? 0 : ready, 1);
+    let ready = waiting.findIndex(n => n.incoming === 0);
+    if (ready < 0) {
+      // In cyclic geometry, discharge ground slabs first so terrain is always painted beneath elevated structures.
+      ready = waiting.findIndex(n => n.s.id?.startsWith("slab_"));
+      if (ready < 0) ready = 0;
+    }
+    const [node] = waiting.splice(ready, 1);
     ordered.push(node!.s);
     for (const n of node!.next) nodes[n]!.incoming--;
   }
