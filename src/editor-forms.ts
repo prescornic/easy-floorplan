@@ -15,6 +15,7 @@ import type {
   FloorplanCardConfig,
   Furniture,
   Opening,
+  Roof,
   SliderStyle,
   Tracker,
   Wall,
@@ -2029,51 +2030,6 @@ export function areaForm(a: Area): FormSpec {
             },
           ]
         : []),
-      { name: "hasRoof", label: "Draw 3D Roof", selector: { boolean: {} } },
-      ...(a.hasRoof
-        ? [
-            {
-              name: "roofType",
-              label: "Roof style",
-              selector: dropdown(
-                opt("flat", "Flat slab"),
-                opt("gable", "Gable pitch"),
-                opt("hip", "Hip roof"),
-                opt("shed", "Shed (mono-pitch)")
-              ),
-            },
-            ...((a.roofType ?? "flat") === "shed"
-              ? [
-                  {
-                    name: "roofPitchSide",
-                    label: "Pitched high side",
-                    helper: "Which side slopes up to peak height",
-                    selector: dropdown(
-                      opt("top", "Top / North (+Y)"),
-                      opt("bottom", "Bottom / South (-Y)"),
-                      opt("right", "Right / East (+X)"),
-                      opt("left", "Left / West (-X)")
-                    ),
-                  },
-                ]
-              : []),
-            {
-              name: "roofPitch",
-              label: "Roof pitch / height",
-              selector: { number: { min: 0, max: 200, step: 5, mode: "slider" as const } },
-            },
-            {
-              name: "roofElevation",
-              label: "Base elevation Z",
-              selector: { number: { min: 0, max: 400, step: 5, mode: "slider" as const } },
-            },
-            {
-              name: "roofOverhang",
-              label: "Overhang / Eaves",
-              selector: { number: { min: 0, max: 50, step: 1, mode: "slider" as const } },
-            },
-          ]
-        : []),
       {
         name: "opacity",
         label: "Fill opacity",
@@ -2169,12 +2125,6 @@ export function areaForm(a: Area): FormSpec {
       showName: a.showName ?? true,
       zoneKind: a.zoneKind ?? "indoor",
       labelSize: a.labelSize ?? DEFAULT_AREA_LABEL_SIZE,
-      hasRoof: a.hasRoof ?? false,
-      roofType: a.roofType ?? "flat",
-      roofPitchSide: a.roofPitchSide ?? "top",
-      roofPitch: a.roofPitch ?? 40,
-      roofElevation: a.roofElevation ?? 60,
-      roofOverhang: a.roofOverhang ?? 0,
       opacity: a.opacity ?? DEFAULT_AREA_OPACITY,
       entity: a.entity ?? "",
       activeOpacity: a.activeOpacity ?? a.opacity ?? DEFAULT_AREA_OPACITY,
@@ -2191,9 +2141,6 @@ export function areaForm(a: Area): FormSpec {
     toPatch: (p) => {
       let out = p;
       if ("zoneKind" in out && (out.zoneKind === "indoor" || !out.zoneKind)) out = { ...out, zoneKind: undefined };
-      if ("hasRoof" in out && !out.hasRoof) {
-        out = { ...out, hasRoof: undefined, roofType: undefined, roofPitchSide: undefined, roofPitch: undefined, roofColor: undefined, roofElevation: undefined, roofOverhang: undefined };
-      }
       // "fill" is the default, so keep it out of the YAML.
       if ("highlight" in out && out.highlight === "fill") out = { ...out, highlight: undefined };
       // The toggle is a form-only control: it says whether `zoom` is written
@@ -2204,6 +2151,102 @@ export function areaForm(a: Area): FormSpec {
         // is about to appear — the fit's own ceiling is the natural opening
         // bid, and unlike before it is now a real, re-selectable value.
         out = { ...rest, zoom: fitZoom ? undefined : MAX_AREA_ZOOM_FIT };
+      }
+      return out;
+    },
+  };
+}
+
+export function roofForm(r: Roof, defaultWallHeight = 60): FormSpec {
+  const isShed = r.type === "shed";
+  const isHipOrGable = r.type === "gable" || r.type === "hip";
+  const defaultHeight = r.type === "flat" ? 8 : Math.round(defaultWallHeight * 0.6);
+
+  return {
+    fields: [
+      {
+        name: "type",
+        label: "Roof style",
+        selector: dropdown(
+          opt("flat", "Flat slab"),
+          opt("gable", "Gable pitch"),
+          opt("hip", "Hip roof"),
+          opt("shed", "Shed (mono-pitch)")
+        ),
+      },
+      ...(isShed
+        ? [
+            {
+              name: "highSide",
+              label: "High side",
+              helper: "Which side slopes up to the ridge height",
+              selector: dropdown(
+                opt("top", "Top / North"),
+                opt("bottom", "Bottom / South"),
+                opt("right", "Right / East"),
+                opt("left", "Left / West")
+              ),
+            },
+          ]
+        : []),
+      ...(isHipOrGable
+        ? [
+            {
+              name: "ridge",
+              label: "Ridge orientation",
+              helper: "Ridge line direction across the roof",
+              selector: dropdown(
+                opt("auto", "Auto (longer side)"),
+                opt("horizontal", "Horizontal (X-axis)"),
+                opt("vertical", "Vertical (Y-axis)")
+              ),
+            },
+          ]
+        : []),
+      {
+        name: "height",
+        label: "Ridge height",
+        helper: "Ridge height above the eaves (canvas units)",
+        selector: { number: { min: 0, max: 200, step: 5, mode: "slider" as const } },
+      },
+      {
+        name: "overhang",
+        label: "Overhang / Eaves",
+        helper: "Horizontal eaves projection beyond the footprint",
+        selector: { number: { min: 0, max: 50, step: 1, mode: "slider" as const } },
+      },
+      {
+        name: "elevation",
+        label: "Base elevation override",
+        helper: "Optional override (defaults to wall height)",
+        selector: { number: { min: 0, max: 400, step: 5, mode: "slider" as const } },
+      },
+    ],
+    data: {
+      type: r.type ?? "gable",
+      highSide: r.highSide ?? "top",
+      ridge: r.ridge ?? "auto",
+      height: r.height ?? defaultHeight,
+      overhang: r.overhang ?? 0,
+      elevation: r.elevation ?? defaultWallHeight,
+    },
+    toPatch: (p) => {
+      let out = p;
+      if ("type" in out) {
+        if (out.type === "flat") {
+          out = { ...out, highSide: undefined, ridge: undefined, height: out.height ?? 8 };
+        } else if (out.type !== "shed") {
+          out = { ...out, highSide: undefined };
+        }
+      }
+      if ("ridge" in out && (out.ridge === "auto" || !out.ridge)) {
+        out = { ...out, ridge: undefined };
+      }
+      if ("overhang" in out && (out.overhang === 0 || out.overhang === undefined)) {
+        out = { ...out, overhang: undefined };
+      }
+      if ("elevation" in out && (out.elevation === defaultWallHeight || out.elevation === undefined)) {
+        out = { ...out, elevation: undefined };
       }
       return out;
     },

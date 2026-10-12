@@ -10,7 +10,7 @@ import {
 import { getFloors, type Floor, type AreaPoint } from "./types";
 
 describe("lower floor coverage filtering", () => {
-  const yamlText = readFileSync("./tmp/3floorHouse.yaml", "utf8");
+  const yamlText = readFileSync(new URL("./fixtures/3floorHouse.yaml", import.meta.url), "utf8");
   const c = load(yamlText, { schema: YAML11_SCHEMA }) as any;
   const floors = getFloors(c);
   const outside = floors.find((f: Floor) => f.name === "OUtside")!;
@@ -56,10 +56,6 @@ describe("lower floor coverage filtering", () => {
 
   it("filters lower walls so that only walls exposed to uncovered areas are kept", () => {
     const keptWalls = filterLowerWallsByUpperCoverage(basement.walls, upperPolygons);
-    console.log("Kept walls count:", keptWalls.length);
-    for (const w of keptWalls) {
-      console.log(`Kept wall: ${w.id} (${w.x1},${w.y1}) -> (${w.x2},${w.y2})`);
-    }
 
     // Garage door wall segments (x=1320, between y=520 and y=820) must be kept
     const garageDoorWalls = keptWalls.filter(
@@ -117,7 +113,6 @@ describe("lower floor coverage filtering", () => {
   it("keeps garage door opening and hides covered openings", () => {
     const keptWalls = filterLowerWallsByUpperCoverage(basement.walls, upperPolygons);
     const keptOpenings = filterExternalOpenings(basement.openings, keptWalls);
-    console.log("Kept openings:", keptOpenings.map(o => o.id));
 
     // Garage door must be kept
     const garageDoor = keptOpenings.find((o) => o.id === "door_mbm6tg3");

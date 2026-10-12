@@ -20,8 +20,9 @@ import {
   uid,
   configsEqual,
   moveFloor,
+  getFloorRoofs,
 } from "./types";
-import type { FloorplanCardConfig, TrackerSensor } from "./types";
+import type { FloorplanCardConfig, TrackerSensor, Roof } from "./types";
 
 describe("resolveSnap", () => {
   it("falls back to the grid when snap is unset (the new default)", () => {
@@ -569,3 +570,23 @@ describe("moveFloor (issue #66)", () => {
     expect(moveFloor([], "f0", 1)).toBeNull();
   });
 });
+
+describe("getFloorRoofs", () => {
+  it("returns dedicated floor.roofs when present", () => {
+    const r: Roof = {
+      id: "r1",
+      type: "gable",
+      points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+      height: 40,
+    };
+    const f = { ...makeFloor("Main"), roofs: [r] };
+    expect(getFloorRoofs(f)).toEqual([r]);
+  });
+
+  it("returns an empty array when floor.roofs is empty or unset", () => {
+    const f = makeFloor("Main");
+    expect(getFloorRoofs(f)).toEqual([]);
+    expect(getFloorRoofs({ ...f, roofs: undefined })).toEqual([]);
+  });
+});
+

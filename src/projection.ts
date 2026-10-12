@@ -27,7 +27,7 @@
  */
 import { svg, nothing, type SVGTemplateResult } from "lit";
 import { cssNumber, cssIdent } from "./css-safe";
-import type { WallKind, Area, AreaPoint } from "./types";
+import type { WallKind, AreaPoint, Roof, RoofType, RectAreaSide } from "./types";
 import { OPENING_ON_WALL_EPS } from "./dead-space";
 import { openingIsSkylight, type OpeningType } from "./types";
 import { joinIsoWalls } from "./projection-joints";
@@ -424,6 +424,23 @@ export function renderIsoSolids(
 
 function offsetAreaPoints(pts: readonly AreaPoint[], overhang: number): Pt[] {
   if (overhang <= 0 || pts.length < 3) return pts.map((p) => ({ x: p.x, y: p.y }));
+  if (pts.length === 4) {
+    const xs = new Set(pts.map((p) => p.x));
+    const ys = new Set(pts.map((p) => p.y));
+    if (xs.size === 2 && ys.size === 2) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return pts.map((p) => ({
+        x: p.x === minX ? minX - overhang : maxX + overhang,
+        y: p.y === minY ? minY - overhang : maxY + overhang,
+      }));
+    }
+  }
   let cx = 0, cy = 0;
   for (const p of pts) { cx += p.x / pts.length; cy += p.y / pts.length; }
   return pts.map((p) => {
@@ -435,7 +452,7 @@ function offsetAreaPoints(pts: readonly AreaPoint[], overhang: number): Pt[] {
 }
 
 /**
- * Roof solids generated for areas that have `hasRoof: true`.
+ * Roof solids generated from Roof elements.
  *
  * Supports 4 architectural styles:
  * - `flat`: Slab from base elevation to base + pitch
@@ -508,7 +525,7 @@ function createRoofFace(
 }
 
 interface ParsedGableRoof {
-  area: Area;
+  id: string;
   minX: number;
   maxX: number;
   minY: number;
@@ -564,7 +581,7 @@ function generateIntersectingGables(
     const p4 = makePt3D(minUA, maxVA, z0A);
     const r1 = makePt3D(minUA, midVA, zPeakA);
     const r2 = makePt3D(maxUA, midVA, zPeakA);
-    solids.push(createRoofFace(main.area.id, orderFace([p3, p4, r1, r2]), map, main.color, z0A, zPeakA));
+    solids.push(createRoofFace(main.id, orderFace([p3, p4, r1, r2]), map, main.color, z0A, zPeakA));
   } else {
     let curU = minUA;
     for (const c of southCross) {
@@ -585,20 +602,20 @@ function generateIntersectingGables(
       const frontRidge = makePt3D(midUB, vFront, zPeakB);
 
       // Faces for cross gable c
-      solids.push(createRoofFace(c.area.id, orderFace([valleyW, apex, frontRidge]), map, c.color, z0B, zPeakB));
-      solids.push(createRoofFace(c.area.id, orderFace([valleyE, frontRidge, apex]), map, c.color, z0B, zPeakB));
-      solids.push(createRoofFace(c.area.id, orderFace([valleyE, valleyW, frontRidge]), map, c.color, z0B, zPeakB));
+      solids.push(createRoofFace(c.id, orderFace([valleyW, apex, frontRidge]), map, c.color, z0B, zPeakB));
+      solids.push(createRoofFace(c.id, orderFace([valleyE, frontRidge, apex]), map, c.color, z0B, zPeakB));
+      solids.push(createRoofFace(c.id, orderFace([valleyE, valleyW, frontRidge]), map, c.color, z0B, zPeakB));
 
       // Main roof face west of this cross gable
       const rW = makePt3D(curU, midVA, zPeakA);
       const eW = makePt3D(curU, vFront, z0A);
-      solids.push(createRoofFace(main.area.id, orderFace([rW, apex, valleyW, eW]), map, main.color, z0A, zPeakA));
+      solids.push(createRoofFace(main.id, orderFace([rW, apex, valleyW, eW]), map, main.color, z0A, zPeakA));
 
       // If dormer peak is lower than main peak, triangle above dormer
       if (zPeakB < zPeakA) {
         const rB1 = makePt3D(minUB, midVA, zPeakA);
         const rB2 = makePt3D(maxUB, midVA, zPeakA);
-        solids.push(createRoofFace(main.area.id, orderFace([rB1, rB2, apex]), map, main.color, z0A, zPeakA));
+        solids.push(createRoofFace(main.id, orderFace([rB1, rB2, apex]), map, main.color, z0A, zPeakA));
       }
 
       curU = maxUB;
@@ -617,7 +634,7 @@ function generateIntersectingGables(
       const valleyELast = makePt3D(maxULast, vFront, z0A);
       const rE = makePt3D(maxUA, midVA, zPeakA);
       const eE = makePt3D(maxUA, vFront, z0A);
-      solids.push(createRoofFace(main.area.id, orderFace([apexLast, rE, eE, valleyELast]), map, main.color, z0A, zPeakA));
+      solids.push(createRoofFace(main.id, orderFace([apexLast, rE, eE, valleyELast]), map, main.color, z0A, zPeakA));
     }
   }
 
@@ -627,7 +644,7 @@ function generateIntersectingGables(
     const p2 = makePt3D(maxUA, minVA, z0A);
     const r1 = makePt3D(minUA, midVA, zPeakA);
     const r2 = makePt3D(maxUA, midVA, zPeakA);
-    solids.push(createRoofFace(main.area.id, orderFace([p1, p2, r2, r1]), map, main.color, z0A, zPeakA));
+    solids.push(createRoofFace(main.id, orderFace([p1, p2, r2, r1]), map, main.color, z0A, zPeakA));
   } else {
     let curU = minUA;
     for (const c of northCross) {
@@ -648,19 +665,19 @@ function generateIntersectingGables(
       const frontRidge = makePt3D(midUB, vFront, zPeakB);
 
       // Faces for cross gable c on North side
-      solids.push(createRoofFace(c.area.id, orderFace([frontRidge, apex, valleyW]), map, c.color, z0B, zPeakB));
-      solids.push(createRoofFace(c.area.id, orderFace([frontRidge, valleyE, apex]), map, c.color, z0B, zPeakB));
-      solids.push(createRoofFace(c.area.id, orderFace([valleyW, valleyE, frontRidge]), map, c.color, z0B, zPeakB));
+      solids.push(createRoofFace(c.id, orderFace([frontRidge, apex, valleyW]), map, c.color, z0B, zPeakB));
+      solids.push(createRoofFace(c.id, orderFace([frontRidge, valleyE, apex]), map, c.color, z0B, zPeakB));
+      solids.push(createRoofFace(c.id, orderFace([valleyW, valleyE, frontRidge]), map, c.color, z0B, zPeakB));
 
       // Main roof face west of this cross gable
       const rW = makePt3D(curU, midVA, zPeakA);
       const eW = makePt3D(curU, vFront, z0A);
-      solids.push(createRoofFace(main.area.id, orderFace([eW, valleyW, apex, rW]), map, main.color, z0A, zPeakA));
+      solids.push(createRoofFace(main.id, orderFace([eW, valleyW, apex, rW]), map, main.color, z0A, zPeakA));
 
       if (zPeakB < zPeakA) {
         const rB1 = makePt3D(minUB, midVA, zPeakA);
         const rB2 = makePt3D(maxUB, midVA, zPeakA);
-        solids.push(createRoofFace(main.area.id, orderFace([rB2, rB1, apex]), map, main.color, z0A, zPeakA));
+        solids.push(createRoofFace(main.id, orderFace([rB2, rB1, apex]), map, main.color, z0A, zPeakA));
       }
 
       curU = maxUB;
@@ -678,7 +695,7 @@ function generateIntersectingGables(
       const valleyELast = makePt3D(maxULast, vFront, z0A);
       const rE = makePt3D(maxUA, midVA, zPeakA);
       const eE = makePt3D(maxUA, vFront, z0A);
-      solids.push(createRoofFace(main.area.id, orderFace([valleyELast, eE, rE, apexLast]), map, main.color, z0A, zPeakA));
+      solids.push(createRoofFace(main.id, orderFace([valleyELast, eE, rE, apexLast]), map, main.color, z0A, zPeakA));
     }
   }
 
@@ -689,47 +706,73 @@ function generateIntersectingGables(
   const w1 = makePt3D(minUA, vSouth, z0A);
   const w2 = makePt3D(minUA, vNorth, z0A);
   const wRidge = makePt3D(minUA, midVA, zPeakA);
-  solids.push(createRoofFace(main.area.id, orderFace([w1, w2, wRidge]), map, main.color, z0A, zPeakA));
+  solids.push(createRoofFace(main.id, orderFace([w1, w2, wRidge]), map, main.color, z0A, zPeakA));
 
   const e1 = makePt3D(maxUA, vNorth, z0A);
   const e2 = makePt3D(maxUA, vSouth, z0A);
   const eRidge = makePt3D(maxUA, midVA, zPeakA);
-  solids.push(createRoofFace(main.area.id, orderFace([e1, e2, eRidge]), map, main.color, z0A, zPeakA));
+  solids.push(createRoofFace(main.id, orderFace([e1, e2, eRidge]), map, main.color, z0A, zPeakA));
 
   return solids;
 }
 
 /**
- * Roof solids generated for areas that have `hasRoof: true`.
+ * Roof solids generated for 3D floors and outdoor courtyard layers.
  *
  * Supports 4 architectural styles:
- * - `flat`: Slab from base elevation to base + pitch
+ * - `flat`: Slab from base elevation to base + height
  * - `hip`: Sloped triangular/trapezoidal pitch faces meeting at central ridge / apex
  * - `gable`: Dual-slope pitch along primary axis with end gables (supports cross-gable intersections)
- * - `shed`: Mono-pitch slope from min to max plan dimension
+ * - `shed`: Mono-pitch slope from eaves to high side
  */
 export function roofSolids(
-  areas: readonly Area[],
+  roofs: readonly Roof[],
   map: (x: number, y: number) => Pt,
   defaultWallHeight: number
 ): IsoSolid[] {
   const solids: IsoSolid[] = [];
 
-  // Parse all roof areas
+  interface NormalizedRoof {
+    id: string;
+    type: RoofType;
+    points: AreaPoint[];
+    height: number;
+    elevation: number;
+    overhang: number;
+    color: string;
+    highSide?: RectAreaSide;
+    ridge?: "horizontal" | "vertical";
+  }
+
   const parsedGables: ParsedGableRoof[] = [];
-  const otherAreas: Area[] = [];
+  const otherRoofs: NormalizedRoof[] = [];
 
-  for (const area of areas) {
-    if (!area.hasRoof || !area.points || area.points.length < 3) continue;
+  for (const roof of roofs) {
+    if (!roof.points || roof.points.length < 3) continue;
 
-    const roofType = area.roofType ?? "flat";
-    if (roofType === "gable") {
-      const z0 = area.roofElevation ?? defaultWallHeight;
-      const pitch = area.roofPitch ?? Math.round(defaultWallHeight * 0.6);
-      const overhang = area.roofOverhang ?? 0;
-      const color = area.roofColor || "#8d6e63";
+    const type: RoofType = roof.type ?? "gable";
+    const elevation = roof.elevation ?? defaultWallHeight;
+    const defaultHeight = type === "flat" ? 8 : Math.round(defaultWallHeight * 0.6);
+    const height = roof.height ?? defaultHeight;
+    const overhang = roof.overhang ?? 0;
+    const color = roof.color || "#8d6e63";
+    const highSide = roof.highSide;
+    const ridge = roof.ridge;
 
-      const planPts = offsetAreaPoints(area.points, overhang);
+    const norm: NormalizedRoof = {
+      id: roof.id,
+      type,
+      points: roof.points,
+      height,
+      elevation,
+      overhang,
+      color,
+      highSide,
+      ridge,
+    };
+
+    if (type === "gable") {
+      const planPts = offsetAreaPoints(norm.points, overhang);
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const p of planPts) {
         if (p.x < minX) minX = p.x;
@@ -737,17 +780,22 @@ export function roofSolids(
         if (p.y < minY) minY = p.y;
         if (p.y > maxY) maxY = p.y;
       }
+      const rangeX = maxX - minX;
+      const rangeY = maxY - minY;
+      const alongX = ridge ? ridge === "horizontal" : rangeX >= rangeY;
       parsedGables.push({
-        area,
+        id: norm.id,
         minX, maxX, minY, maxY,
-        rangeX: maxX - minX, rangeY: maxY - minY,
+        rangeX, rangeY,
         midX: (minX + maxX) / 2, midY: (minY + maxY) / 2,
-        alongX: (maxX - minX) >= (maxY - minY),
-        z0, pitch, zPeak: z0 + pitch,
+        alongX,
+        z0: elevation,
+        pitch: height,
+        zPeak: elevation + height,
         color,
       });
     } else {
-      otherAreas.push(area);
+      otherRoofs.push(norm);
     }
   }
 
@@ -776,8 +824,8 @@ export function roofSolids(
 
       if (!mainToCross.has(g1)) mainToCross.set(g1, []);
       mainToCross.get(g1)!.push(g2);
-      handledGableIds.add(g1.area.id);
-      handledGableIds.add(g2.area.id);
+      handledGableIds.add(g1.id);
+      handledGableIds.add(g2.id);
     }
   }
 
@@ -787,19 +835,30 @@ export function roofSolids(
   }
 
   // Generate standard roofs for unhandled gables and other types
-  const remainingAreas = [
-    ...parsedGables.filter(g => !handledGableIds.has(g.area.id)).map(g => g.area),
-    ...otherAreas,
+  const remainingRoofs: NormalizedRoof[] = [
+    ...parsedGables
+      .filter((g) => !handledGableIds.has(g.id))
+      .map((g) => ({
+        id: g.id,
+        type: "gable" as const,
+        points: [{ x: g.minX, y: g.minY }, { x: g.maxX, y: g.minY }, { x: g.maxX, y: g.maxY }, { x: g.minX, y: g.maxY }],
+        height: g.pitch,
+        elevation: g.z0,
+        overhang: 0, // already offset in g.minX..g.maxX
+        color: g.color,
+        ridge: g.alongX ? ("horizontal" as const) : ("vertical" as const),
+      })),
+    ...otherRoofs,
   ];
 
-  for (const area of remainingAreas) {
-    const roofType = area.roofType ?? "flat";
-    const z0 = area.roofElevation ?? defaultWallHeight;
-    const pitch = area.roofPitch ?? (roofType === "flat" ? 8 : Math.round(defaultWallHeight * 0.6));
-    const overhang = area.roofOverhang ?? 0;
-    const color = area.roofColor || "#8d6e63";
+  for (const roof of remainingRoofs) {
+    const roofType = roof.type;
+    const z0 = roof.elevation;
+    const pitch = roof.height;
+    const overhang = roof.overhang;
+    const color = roof.color;
 
-    const planPts = offsetAreaPoints(area.points, overhang);
+    const planPts = overhang > 0 ? offsetAreaPoints(roof.points, overhang) : roof.points;
     const mappedPts = planPts.map((p) => map(p.x, p.y));
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -820,7 +879,7 @@ export function roofSolids(
     if (roofType === "flat") {
       solids.push({
         kind: "roof",
-        id: area.id,
+        id: roof.id,
         base: mappedPts,
         z0,
         z1: z0 + pitch,
@@ -828,7 +887,7 @@ export function roofSolids(
         sortDepth,
       });
     } else if (roofType === "hip") {
-      const alongX = rangeX >= rangeY;
+      const alongX = roof.ridge ? roof.ridge === "horizontal" : rangeX >= rangeY;
       const delta = Math.min(alongX ? rangeX / 2 : rangeY / 2, (alongX ? rangeY : rangeX) / 2);
 
       if (alongX) {
@@ -839,10 +898,10 @@ export function roofSolids(
         const p3 = { x: maxX, y: maxY, z: z0 };
         const p4 = { x: minX, y: maxY, z: z0 };
 
-        solids.push(createRoofFace(area.id, [p1, p2, r2, r1], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p2, p3, r2], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p3, p4, r1, r2], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p4, p1, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p1, p2, r2, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p2, p3, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p3, p4, r1, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p4, p1, r1], map, color, z0, zPeak, sortDepth));
       } else {
         const r1 = { x: midX, y: minY + delta, z: zPeak };
         const r2 = { x: midX, y: maxY - delta, z: zPeak };
@@ -851,13 +910,13 @@ export function roofSolids(
         const p3 = { x: maxX, y: maxY, z: z0 };
         const p4 = { x: minX, y: maxY, z: z0 };
 
-        solids.push(createRoofFace(area.id, [p1, p2, r1], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p2, p3, r2, r1], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p3, p4, r2], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p4, p1, r1, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p1, p2, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p2, p3, r2, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p3, p4, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p4, p1, r1, r2], map, color, z0, zPeak, sortDepth));
       }
     } else if (roofType === "gable") {
-      const alongX = rangeX >= rangeY;
+      const alongX = roof.ridge ? roof.ridge === "horizontal" : rangeX >= rangeY;
       const p1 = { x: minX, y: minY, z: z0 };
       const p2 = { x: maxX, y: minY, z: z0 };
       const p3 = { x: maxX, y: maxY, z: z0 };
@@ -866,42 +925,53 @@ export function roofSolids(
       if (alongX) {
         const r1 = { x: minX, y: midY, z: zPeak };
         const r2 = { x: maxX, y: midY, z: zPeak };
-        solids.push(createRoofFace(area.id, [p1, p2, r2, r1], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p3, p4, r1, r2], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p4, p1, r1], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p2, p3, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p1, p2, r2, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p3, p4, r1, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p4, p1, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p2, p3, r2], map, color, z0, zPeak, sortDepth));
       } else {
         const r1 = { x: midX, y: minY, z: zPeak };
         const r2 = { x: midX, y: maxY, z: zPeak };
-        solids.push(createRoofFace(area.id, [p4, p1, r1, r2], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p2, p3, r2, r1], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p1, p2, r1], map, color, z0, zPeak, sortDepth));
-        solids.push(createRoofFace(area.id, [p3, p4, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p4, p1, r1, r2], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p2, p3, r2, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p1, p2, r1], map, color, z0, zPeak, sortDepth));
+        solids.push(createRoofFace(roof.id, [p3, p4, r2], map, color, z0, zPeak, sortDepth));
       }
     } else if (roofType === "shed") {
-      const side = area.roofPitchSide ?? "top";
+      const side = roof.highSide ?? "top";
       const zPeak = z0 + pitch;
 
-      let zSW = z0, zSE = z0, zNW = z0, zNE = z0;
-      if (side === "top") { zNW = zPeak; zNE = zPeak; }
-      else if (side === "bottom") { zSW = zPeak; zSE = zPeak; }
-      else if (side === "right") { zSE = zPeak; zNE = zPeak; }
-      else if (side === "left") { zSW = zPeak; zNW = zPeak; }
+      // In canvas coordinates, y=0 is top (North), y=maxY is bottom (South),
+      // x=0 is left (West), x=maxX is right (East).
+      let zNW = z0, zNE = z0, zSE = z0, zSW = z0;
+      if (side === "top") {
+        zNW = zPeak;
+        zNE = zPeak;
+      } else if (side === "bottom") {
+        zSW = zPeak;
+        zSE = zPeak;
+      } else if (side === "left") {
+        zNW = zPeak;
+        zSW = zPeak;
+      } else if (side === "right") {
+        zNE = zPeak;
+        zSE = zPeak;
+      }
 
-      const pSW = { x: minX, y: minY, z: zSW };
-      const pSE = { x: maxX, y: minY, z: zSE };
-      const pNE = { x: maxX, y: maxY, z: zNE };
-      const pNW = { x: minX, y: maxY, z: zNW };
+      const pNW = { x: minX, y: minY, z: zNW };
+      const pNE = { x: maxX, y: minY, z: zNE };
+      const pSE = { x: maxX, y: maxY, z: zSE };
+      const pSW = { x: minX, y: maxY, z: zSW };
 
-      solids.push(createRoofFace(area.id, [pSW, pSE, pNE, pNW], map, color, z0, zPeak, sortDepth));
+      solids.push(createRoofFace(roof.id, [pNW, pNE, pSE, pSW], map, color, z0, zPeak, sortDepth));
 
-      const corners = [pSW, pSE, pNE, pNW];
+      const corners = [pNW, pNE, pSE, pSW];
       for (let i = 0; i < 4; i++) {
         const c1 = corners[i]!;
         const c2 = corners[(i + 1) % 4]!;
         if (c1.z > z0 || c2.z > z0) {
           solids.push(createRoofFace(
-            area.id,
+            roof.id,
             [
               { x: c1.x, y: c1.y, z: z0 },
               { x: c2.x, y: c2.y, z: z0 },

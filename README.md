@@ -379,7 +379,7 @@ Mark a floor as **Outdoor courtyard floor** (`isOutdoor: true`) under Floor Sett
 
 - **Automatic Multi-Level Stacking** — Indoor floors are extracted and stacked vertically according to their Home Assistant floor registry order or level. Exterior walls, windows, and doors are automatically separated from interior partition walls and extruded.
 - **Subterranean Basements** — Lower floors with negative elevation offsets relative to the ground plane (such as basements and underground garages) are supported. Underground foundation walls covered by upper floors are hidden, while walkout basements and exposed driveway ramps remain visible.
-- **3D Roofs** — Trace an area over a room or building perimeter and turn on **Draw 3D Roof** (`hasRoof: true`). Pick from **Gable pitch**, **Hip roof**, **Flat slab**, or **Shed (mono-pitch)**, with customizable pitch height, elevation, overhang, and color.
+- **3D Roofs** — Use the **Roof** drawing tool to draw a rectangle or trace a polygon footprint over a room or building perimeter. Pick from **Gable pitch**, **Hip roof**, **Flat slab**, or **Shed (mono-pitch)**, with customizable pitch height, elevation override, overhang, and color.
 - **Cross-Gable Intersections** — When two perpendicular gable roof areas overlap (such as a dormer or perpendicular wing meeting the main roof), the card automatically cuts valley seams, ridge apexes, and pediments.
 - **Interactive Auto-Hide on Zoom** — Clicking any 3D roof solid zooms into the room beneath it and automatically hides the roof, revealing internal furniture, lighting, and sensor badges. Unzooming restores the roof.
 - **Outdoor Zones** — Classify areas as `lawn`, `patio`, `terrace`, `pool`, `driveway`, `garden`, or `courtyard` with dedicated default color fills.

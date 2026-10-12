@@ -192,24 +192,22 @@ floors:
       - { id: w3, x1: 900, y1: 500, x2: 100, y2: 500 }
       - { id: w4, x1: 100, y1: 500, x2: 100, y2: 100 }
       - { id: w_div, x1: 500, y1: 100, x2: 500, y2: 500 } # Interior partition wall
-    areas:
-      # 1. ENCOMPASSING ROOF AREA (MUST BE FIRST)
+    roofs:
+      # 1. DEDICATED ROOF ELEMENT
       - id: whole_house_roof
-        name: House Roof
-        showName: false        # Hide label so it doesn't overlap room names
-        hasRoof: true
-        roofType: hip          # hip, gable, shed, or flat
-        roofPitch: 40
-        roofElevation: 60
-        roofOverhang: 12
-        roofColor: '#8d6e63'
+        type: hip          # hip, gable, shed, or flat
+        height: 40
+        elevation: 60
+        overhang: 12
+        color: '#8d6e63'
         points:
           - { x: 100, 'y': 100 }
           - { x: 900, 'y': 100 }
           - { x: 900, 'y': 500 }
           - { x: 100, 'y': 500 }
 
-      # 2. INDIVIDUAL ROOM AREAS (AFTER THE ENCOMPASSING AREA)
+    areas:
+      # 2. INDIVIDUAL ROOM AREAS
       - id: living_room
         name: Living Room
         showName: true
@@ -241,17 +239,23 @@ floors:
     isOutdoor: true       # Activates outdoor mode: renders 3D building stack + roofs + shadows
     walls:
       - { id: fence_1, x1: 0, y1: 0, x2: 1000, y2: 0 }
+    roofs:
+      - id: patio_roof
+        type: shed             # Patio can have its own shed/pergola roof
+        highSide: top
+        height: 20
+        elevation: 60
+        color: '#a1887f'
+        points:
+          - { x: 800, 'y': 460 }
+          - { x: 1000, 'y': 460 }
+          - { x: 1000, 'y': 600 }
+          - { x: 800, 'y': 600 }
     areas:
       - id: patio_zone
         name: Patio
         showName: true
         zoneKind: patio
-        hasRoof: true          # Patio can have its own shed/pergola roof
-        roofType: shed
-        roofPitchSide: top
-        roofPitch: 20
-        roofElevation: 60
-        roofColor: '#a1887f'
         points:
           - { x: 800, 'y': 460 }
           - { x: 1000, 'y': 460 }
@@ -271,7 +275,7 @@ floors:
 
 ### 6.2 Real-World Implementation Example: 3-Level House with Basement & Courtyard
 
-A full production configuration demonstrating a 3-level stacked home with subterranean garage/basement, cross-gable roof intersections, courtyard perimeter fence, and gazebo is available in [`tmp/3floorHouse.yaml`](file:///Users/andrei.prescornic/Personal/Casa/HomeAssystant/easy-floorplan/tmp/3floorHouse.yaml).
+A full production configuration demonstrating a 3-level stacked home with subterranean garage/basement, cross-gable roof intersections, courtyard perimeter fence, and gazebo is available in [`src/fixtures/3floorHouse.yaml`](file:///Users/andrei.prescornic/Personal/Casa/HomeAssystant/easy-floorplan/src/fixtures/3floorHouse.yaml).
 
 **Highlights of this setup**:
 - **Level 2 (`2nd`)**: Primary cross-gable roofs (`HouseRoof` along X and `HouseSmallRoof` along Y) intersecting with automatic valley seams and gable pediments.

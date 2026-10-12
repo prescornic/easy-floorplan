@@ -15,6 +15,7 @@ import type {
   RenderHass,
   Wall,
   AreaPoint,
+  Roof,
 } from "./types";
 import { buildRenderHass } from "./replay-history/render-state-service";
 import "./replay-history/history-timeline";
@@ -37,6 +38,7 @@ import {
   PRESS_IN_MS,
   PRESS_OUT_MS,
   getFloors,
+  getFloorRoofs,
   haFloorsOf,
   trackerPresenceDetected,
   newPlanConfig,
@@ -207,7 +209,7 @@ import { AmountTween, OPENING_TWEEN_MS, rafTweenFrames } from "./opening-tween";
 import { focusOrder, normalizeRoomFocus, stepFocus } from "./room-focus";
 import type { SVGTemplateResult } from "lit";
 import { symbolCatalog } from "./symbols";
-import { deadSpaces, deadSpacesCached } from "./dead-space";
+import { deadSpacesCached } from "./dead-space";
 import type { Opening } from "./types";
 import {
   skinAttribute,
@@ -901,6 +903,18 @@ export class FloorplanCard extends LitElement {
     if (active.isOutdoor) {
       const unzoomedAreas = (areas: readonly Area[]) =>
         this._zoomedAreaId ? areas.filter((a) => a.id !== this._zoomedAreaId) : areas;
+      const unzoomedRoofs = (roofs: readonly Roof[], allAreas: readonly Area[]) => {
+        if (!this._zoomedAreaId) return roofs;
+        const zoomedArea = allAreas.find((a) => a.id === this._zoomedAreaId);
+        return roofs.filter((r) => {
+          if (r.id === this._zoomedAreaId) return false;
+          if (zoomedArea && zoomedArea.points && zoomedArea.points.length >= 3) {
+            const c = polygonCentroid(zoomedArea.points);
+            if (c && pointInPolygon(r.points, c.x, c.y)) return false;
+          }
+          return true;
+        });
+      };
       const floors = getFloors(c);
       const baseLevel = resolveFloorLevel(active, floors, this.hass);
       const indoorFloors = floors.filter((f) => !f.isOutdoor);
@@ -924,7 +938,7 @@ export class FloorplanCard extends LitElement {
             }
           }
           if (!f.isOutdoor && f.walls.length >= 3 && f.areas.length === 0) {
-            for (const ring of deadSpaces(f.walls, [])) {
+            for (const ring of deadSpacesCached(f.walls, [])) {
               if (ring.length >= 3) {
                 upperCoveragePolygons.push(ring);
               }
@@ -952,7 +966,6 @@ export class FloorplanCard extends LitElement {
           if (visibleAreas.length > 0) {
             for (const a of visibleAreas) {
               if (!a.points || a.points.length < 3) continue;
-              if (a.hasRoof) continue;
               const mappedPts = a.points.map((p) => map(p.x, p.y));
               const tone = areaColor(a, a.entity ? renderHass?.states[a.entity]?.state : undefined) ||
                 cssColorOr(a.color, outdoorZoneDefaultColor(a.zoneKind) ?? "#d6d6d6");
@@ -967,7 +980,7 @@ export class FloorplanCard extends LitElement {
               }, zOffset));
             }
           } else if (lvlWalls.length >= 3) {
-            const rings = deadSpaces(lvlWalls, []);
+            const rings = deadSpacesCached(lvlWalls, []);
             for (let i = 0; i < rings.length; i++) {
               const ring = rings[i]!;
               if (ring.length < 3) continue;
@@ -1005,7 +1018,8 @@ export class FloorplanCard extends LitElement {
           const oSolids = openingSolids(o, this._travelling(o, this._openingStyle(o, renderHass)), map, outdoorWallHeight);
           solids.push(...oSolids.map((s) => shiftIsoSolidZ(s, zOffset)));
         }
-        const rSolids = roofSolids(unzoomedAreas(visibleAreas), map, outdoorWallHeight);
+        const lvlRoofs = lvlFloors.flatMap((f) => getFloorRoofs(f));
+        const rSolids = roofSolids(unzoomedRoofs(lvlRoofs, lvlAreas), map, outdoorWallHeight);
         solids.push(...rSolids.map((s) => shiftIsoSolidZ(s, zOffset)));
       }
 
@@ -1025,9 +1039,10 @@ export class FloorplanCard extends LitElement {
       for (const o of ownOpenings) {
         solids.push(...openingSolids(o, this._travelling(o, this._openingStyle(o, renderHass)), map, outdoorWallHeight));
       }
-      solids.push(...roofSolids(unzoomedAreas(active.areas), map, outdoorWallHeight));
+      const activeRoofs = getFloorRoofs(active);
+      solids.push(...roofSolids(unzoomedRoofs(activeRoofs, active.areas), map, outdoorWallHeight));
       for (const a of unzoomedAreas(active.areas)) {
-        if (!a.points || a.points.length < 3 || a.hasRoof) continue;
+        if (!a.points || a.points.length < 3) continue;
         const mappedPts = a.points.map((p) => map(p.x, p.y));
         const tone = areaColor(a, a.entity ? renderHass?.states[a.entity]?.state : undefined) ||
           cssColorOr(a.color, outdoorZoneDefaultColor(a.zoneKind) ?? "#d6d6d6");
@@ -1081,12 +1096,23 @@ export class FloorplanCard extends LitElement {
     ];
     const byId = new Map(allOpenings.map((o) => [o.id, o]));
     const allAreas = getFloors(c).flatMap((f) => f.areas);
+    const allRoofs = getFloors(c).flatMap((f) => getFloorRoofs(f));
     const areaById = new Map(allAreas.map((a) => [a.id, a]));
+    const roofById = new Map(allRoofs.map((r) => [r.id, r]));
     const solidEdges = c.appearance === "line-art" ? solidEdgeRenderer(solids, LINE_INK) : undefined;
     return renderIsoSolids(solids, (solid, drawing) => {
       if (solidEdges) drawing = svg`${drawing}${solidEdges(solid)}`;
       if (solid.kind === "roof" && solid.id && !solid.id.startsWith("slab_")) {
-        const a = areaById.get(solid.id);
+        let a = areaById.get(solid.id);
+        if (!a) {
+          const roof = roofById.get(solid.id);
+          if (roof && roof.points && roof.points.length >= 3) {
+            const rc = polygonCentroid(roof.points);
+            if (rc) {
+              a = allAreas.find((ar) => ar.points && ar.points.length >= 3 && pointInPolygon(ar.points, rc.x, rc.y));
+            }
+          }
+        }
         if (a) {
           const acts = areaHasActions(a);
           return svg`<g class="fp-iso-roof-button"

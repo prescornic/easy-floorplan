@@ -48,7 +48,7 @@ describe("responsive editor workspace", () => {
     await settle(t.editor);
     expect(t.el(".side").checkVisibility()).toBe(false);
     expect(t.el(".tool-compact").checkVisibility()).toBe(true);
-    expect(t.root.querySelectorAll(".tool-compact option")).toHaveLength(8);
+    expect(t.root.querySelectorAll(".tool-compact option")).toHaveLength(9);
     for (const button of t.root.querySelectorAll<HTMLElement>(".toolbar button, .canvas-heading button, .canvas-heading select")) {
       const r = button.getBoundingClientRect();
       expect(r.left).toBeGreaterThanOrEqual(t.rect(".editor").left);

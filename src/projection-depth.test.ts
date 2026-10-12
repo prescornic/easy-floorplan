@@ -3,7 +3,7 @@ import { furnitureSolid, wallSolids, roofSolids, roofCourseLines, shiftIsoSolidZ
 import { sortIsoSolids } from "./projection-order";
 import { joinIsoWalls } from "./projection-joints";
 import { ambientPointInArea } from "./ambient-daylight";
-import type { Area } from "./types";
+import type { Roof } from "./types";
 
 const wall = { id: "horizontal", x1: 0, y1: 0, x2: 100, y2: 0, thickness: 8 };
 const upright = { id: "vertical", x1: 100, y1: 0, x2: 100, y2: 100, thickness: 8 };
@@ -118,19 +118,19 @@ describe("spatial painter order (#321)", () => {
   });
 
   it("generates intersecting cross-gable roof solids with valley-trimmed faces", () => {
-    const mainRoofArea: Area = {
+    const mainRoof: Roof = {
       id: "main_roof",
       points: [{ x: 420, y: 220 }, { x: 1320, y: 220 }, { x: 1320, y: 1120 }, { x: 420, y: 1120 }],
-      hasRoof: true,
-      roofType: "gable",
+      type: "gable",
+      height: 90,
     };
-    const smallRoofArea: Area = {
+    const smallRoof: Roof = {
       id: "small_roof",
       points: [{ x: 720, y: 680 }, { x: 1020, y: 680 }, { x: 1020, y: 1120 }, { x: 720, y: 1120 }],
-      hasRoof: true,
-      roofType: "gable",
+      type: "gable",
+      height: 90,
     };
-    const solids = roofSolids([mainRoofArea, smallRoofArea], (x, y) => ({ x, y }), 150);
+    const solids = roofSolids([mainRoof, smallRoof], (x, y) => ({ x, y }), 150);
     const mainSolids = solids.filter((s) => s.id === "main_roof");
     const smallSolids = solids.filter((s) => s.id === "small_roof");
 
